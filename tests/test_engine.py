@@ -167,6 +167,21 @@ class EngineTests(unittest.TestCase):
                        return_value=effect), self.assertRaises(ModelError):
                 query_to_csv(query,self.root/'out.csv',server='localhost:123',database='Synthetic')
 
+    def test_query_command_exports_elapsed_csv_without_a_dscmd_path(self):
+        query = self.root/'query.dax';query.write_text('EVALUATE ROW("Value",1)')
+        def fake(argv, **kwargs):
+            self.assertEqual(argv[3],'benchmark')
+            self.assertEqual(argv[argv.index('--warm')+1],'2')
+            Path(argv[argv.index('--output')+1]).write_text('Sequence,Cache,TotalDuration_ms,RowCount,Error,TimingSource\n1,Warm,2,1,,client_elapsed\n')
+            return subprocess.CompletedProcess(argv,0,'','')
+        output = self.root/'timing.csv'
+        with patch('semantic_hotspots.engine.subprocess.run',side_effect=fake), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(['query',str(query),'--server','localhost:123','--database','Synthetic',
+                                   '--benchmark','--warm','2','-o',str(output)]),0)
+        self.assertEqual(read_benchmark_csv(output)[0]['cpu_ms'],None)
+        with self.assertRaises(ModelError):
+            query_to_csv(query,output,server='localhost:123',database='Synthetic',benchmark=True)
+
     def test_direct_backend_drives_existing_benchmark_collection(self):
         model = {'model':{'tables':[{'name':'Sales','columns':[{'name':'Amount','dataType':'double'}],
                                     'measures':[{'name':'Total','expression':'SUM(Sales[Amount])'}]}]}}

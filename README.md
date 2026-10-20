@@ -248,9 +248,11 @@ For a generated showcase's validation and row-count queries, export a single res
 ```powershell
 python -m semantic_hotspots query powerbi-showcase/queries/QUERY-validation.dax --server localhost:PORT --database DATABASE -o validation.csv
 python -m semantic_hotspots query powerbi-showcase/queries/row-counts.dax --server localhost:PORT --database DATABASE -o row-counts.csv
+python -m semantic_hotspots query powerbi-showcase/queries/QUERY-baseline.dax --server localhost:PORT --database DATABASE --benchmark --warm 5 -o baseline-timing.csv
+python -m semantic_hotspots query powerbi-showcase/queries/QUERY-candidate.dax --server localhost:PORT --database DATABASE --benchmark --warm 5 -o candidate-timing.csv
 ```
 
-Replace `QUERY-validation.dax` with an actual generated filename. Existing output files are never overwritten. Inspect all equality/BLANK flags and meaningful nonblank values; a successful query alone is not a correctness verdict. Showcase A/B timing remains a separate manual workflow; `experiment-run` accepts rewrite experiments, not `showcase.json`.
+Replace `QUERY-*` with actual generated filenames. Existing output files are never overwritten. Inspect all equality/BLANK flags and meaningful nonblank values before timing; a successful query alone is not a correctness verdict. Benchmark CSVs can be read with `read_benchmark_csv`. Showcase validation/A/B comparison remains a separate manual workflow using these queries; `experiment-run` accepts rewrite experiments, not `showcase.json`.
 
 The core remains dependency-free. Client orchestration and error/evidence handling have automated tests; Windows CI additionally loads the official ADOMD library and checks real .NET value serialization. A live Power BI Desktop engine connection, model refresh and DAX performance still require integration validation on Windows. Static analysis and mock generation do not reproduce VertiPaq/Formula Engine execution or DirectQuery source behavior.
 

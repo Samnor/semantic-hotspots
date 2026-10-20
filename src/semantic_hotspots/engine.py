@@ -129,9 +129,15 @@ def desktop_sessions(*, server=None, adomd_path=None, dotnet_runtime='netfx', ti
 
 
 def query_to_csv(query_file, output, *, server, database, adomd_path=None,
-                 dotnet_runtime='netfx', timeout=300):
-    """Execute one local DAX result set; an existing output is never overwritten."""
+                 dotnet_runtime='netfx', timeout=300, benchmark=False, warm=3):
+    """Export one local DAX result set, or warm elapsed-time CSV if benchmark=True.
+
+    An existing output is never overwritten. Benchmark mode does not validate
+    values or attest that two queries are semantically equivalent.
+    """
     timeout = _timeout(timeout)
+    if not isinstance(benchmark, bool) or isinstance(warm, bool) or not isinstance(warm, int) or warm < 1:
+        raise ModelError('benchmark must be boolean and warm must be a positive integer')
     query_file, output = Path(query_file).resolve(), Path(output).resolve()
     if not query_file.is_file():
         raise ModelError('Query file does not exist')
@@ -139,7 +145,7 @@ def query_to_csv(query_file, output, *, server, database, adomd_path=None,
         raise ModelError('Query output must not already exist')
     runner = EngineRunner(server=server, database=database, engine='adomd',
                           adomd_path=adomd_path, dotnet_runtime=dotnet_runtime)
-    command = runner.command('csv', output, query_file, timeout=timeout)
+    command = runner.command('benchmark' if benchmark else 'csv', output, query_file, warm=warm, timeout=timeout)
     try:
         process = subprocess.run(command, capture_output=True, text=True, encoding='utf-8',
                                  errors='replace', timeout=timeout, check=False)

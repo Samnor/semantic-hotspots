@@ -107,6 +107,8 @@ def main(argv: list[str] | None = None) -> int:
     query.add_argument('--adomd-path', type=Path)
     query.add_argument('--dotnet-runtime', choices=['netfx', 'coreclr'], default='netfx')
     query.add_argument('--timeout', type=_positive, default=300)
+    query.add_argument('--benchmark', action='store_true', help='Write warm elapsed-time CSV instead of query values; does not validate correctness')
+    query.add_argument('--warm', type=_positive, default=3)
     query.add_argument('-o', '--output', type=Path, required=True)
     matrix = commands.add_parser('matrices', help='Analyze matrix hierarchies, dependencies and candidate aggregation grains')
     matrix.add_argument('model', type=Path)
@@ -132,8 +134,11 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if result and all(not r['error'] for r in result) else 1
         if args.command == 'query':
             output = query_to_csv(args.file, args.output, server=args.server, database=args.database,
-                                  adomd_path=args.adomd_path, dotnet_runtime=args.dotnet_runtime, timeout=args.timeout)
-            print(f'Engine result CSV: {output}\nQuery executed; correctness depends on inspecting the returned values and validation flags.')
+                                  adomd_path=args.adomd_path, dotnet_runtime=args.dotnet_runtime, timeout=args.timeout,
+                                  benchmark=args.benchmark, warm=args.warm)
+            print(f'Engine CSV: {output}')
+            print('Client elapsed timings only; no CPU/FE/SE or correctness verdict.' if args.benchmark else
+                  'Query executed; correctness depends on inspecting the returned values and validation flags.')
             return 0
         if args.command == 'project':
             settings=json.loads(args.config.read_text(encoding='utf-8-sig')) if args.config else {}

@@ -346,6 +346,7 @@ def export_project(source,matrices,directory,*,matrix_id=None,config=None):
                       '4. Use the optional direct ADOMD client (Windows [engine] extra) or DAX Studio. engine-sessions lists Desktop endpoints/databases. Run each queries/*-validation.dax: all Equal flags must be 1, BLANK flags must match, and meaningful nonblank baseline values must exist.\n'
                       '   py -m semantic_hotspots query queries/QUERY-validation.dax --server localhost:PORT --database DATABASE -o validation.csv\n'
                       '5. Only after correctness checks, time the separate baseline/candidate queries on the same model/data/hardware and cache settings. The combined visual is not a speed comparison.\n'
+                      '   Use query --benchmark --warm 5 for each baseline/candidate file with separate -o CSV paths. Timings include client result reading and are not server CPU/FE/SE.\n'
                       '6. Run queries/row-counts.dax for actual engine row counts. Summary refresh/memory overhead and unsupported future slicers must be evaluated separately.\n'
                       '7. Read showcase.json for the exact summary grain, DAX changes, query fingerprints and limitations.\n\n'
                       'The simulation subdirectory is a separate inspectable mock-data bundle. Its file-based BIM is not the embedded-data Showcase model.\n'
