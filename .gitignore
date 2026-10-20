@@ -39,3 +39,9 @@ rewrite-experiment/
 experiment-results/
 smoke-rewrite-lab/
 smoke-rewrites/
+
+# Generated matrix reports
+matrix-report/
+matrix-report-measured/
+smoke-matrices/
+smoke-matrix-lab/

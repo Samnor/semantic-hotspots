@@ -23,3 +23,5 @@ jobs:
       - run: python -m semantic_hotspots simulate examples/retail.bim --fact-rows 1000 --dimension-rows 50 -o smoke-simulation
       - run: python -m semantic_hotspots simulate examples/rewrite-lab.bim --config examples/rewrite-config.json --fact-rows 1000 -o smoke-rewrite-lab
       - run: python -m semantic_hotspots experiment smoke-rewrite-lab -o smoke-rewrites
+      - run: python -m semantic_hotspots matrices examples/matrix-model.bim --matrices examples/matrices.json -o smoke-matrices
+      - run: python -m semantic_hotspots simulate examples/matrix-model.bim --matrices examples/matrices.json --fact-rows 1000 --dimension-rows 50 -o smoke-matrix-lab

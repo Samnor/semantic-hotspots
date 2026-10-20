@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 BLOCKED_PARTS = {'local-validation', 'private', 'local-data', 'exports', 'reports',
-                 'benchmark-results', 'rewrite-experiment', 'experiment-results', '__pycache__', '.git', '.venv', 'venv'}
+                 'benchmark-results', 'rewrite-experiment', 'experiment-results', 'matrix-report', 'matrix-report-measured', '__pycache__', '.git', '.venv', 'venv'}
 BLOCKED_FILES = {'RELEASE-VERIFICATION.json', '.env', '.DS_Store', 'Thumbs.db'}
 PATTERNS = {
     'personal filesystem path': re.compile(rb'(?:/(?:Users|home)/[A-Za-z0-9_.-]+/|/(?:Volumes)/[^\s\x22\x27]+/|[A-Za-z]:\\Users\\[A-Za-z0-9_.-]+\\)'),

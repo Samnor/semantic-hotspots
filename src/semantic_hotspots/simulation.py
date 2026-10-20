@@ -33,6 +33,7 @@ class SimulationConfig:
     dimension_rows: int = 100
     tables: dict = field(default_factory=dict)
     workloads: list[dict] = field(default_factory=list)
+    matrices: list[dict] = field(default_factory=list)
     top: int = 20
     data_root: str = r'C:\semantic-hotspots\mock\tables'
 
@@ -321,8 +322,8 @@ def simulate(source: Model | str | Path | dict, directory: str | Path, *,
     _positive(config.top, 'top')
     if not isinstance(config.seed, int) or isinstance(config.seed, bool):
         raise ModelError('seed must be an integer')
-    if not isinstance(config.tables, dict) or not isinstance(config.workloads, list):
-        raise ModelError('tables must be an object and workloads must be a list')
+    if not isinstance(config.tables, dict) or not isinstance(config.workloads, list) or not isinstance(config.matrices, list):
+        raise ModelError('tables must be an object; workloads and matrices must be lists')
     if not isinstance(config.data_root, str) or not config.data_root:
         raise ModelError('data_root must be a nonempty path on the engine machine')
     model = source if isinstance(source, Model) else parse_model(source) if isinstance(source, dict) else load_model(source)
@@ -333,6 +334,10 @@ def simulate(source: Model | str | Path | dict, directory: str | Path, *,
         raise ModelError('Simulation needs table and column metadata, not an empty model')
     if model.source_format == 'measure-catalog':
         raise ModelError('Simulation needs a full table/column export; a partial measure catalog cannot establish source schemas')
+    matrix_analysis = None
+    if config.matrices:
+        from .matrices import analyze_matrices
+        matrix_analysis = analyze_matrices(model, config.matrices)
     raw, compatibility = _template(source, model)
     full_template = raw is not None
     if raw is None:
@@ -461,6 +466,9 @@ def simulate(source: Model | str | Path | dict, directory: str | Path, *,
             raise ModelError(f'One-to-one relationship {r.name} needs equal configured row counts for complete matching keys')
     analysis = analyze(model)
     workloads = _workload_queries(model, config, analysis.ranked)
+    if matrix_analysis:
+        workloads += copy.deepcopy(matrix_analysis.workloads)
+        warnings.append('Matrix queries are representative multi-measure contexts; aggregation advice is separate and no aggregate table is built.')
     # Validate all settings and schemas before creating output files.
     root.mkdir(parents=True, exist_ok=True)
     (root/'tables').mkdir(); (root/'queries').mkdir()
@@ -542,6 +550,8 @@ def simulate(source: Model | str | Path | dict, directory: str | Path, *,
                 'workloads': copy.deepcopy(workloads)}
     (root/'simulation.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2, allow_nan=False)+'\n', encoding='utf-8')
     analysis.write(root/'analysis')
+    if matrix_analysis:
+        matrix_analysis.write(root/'matrix-analysis')
     from .benchmark import render_simulation_html
     (root/'simulation.html').write_text(render_simulation_html(manifest), encoding='utf-8')
     (root/'RUN-INSTRUCTIONS.txt').write_text(

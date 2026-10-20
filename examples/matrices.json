@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "matrices": [
+    {
+      "id": "monthly-margin",
+      "title": "Monthly revenue and margin",
+      "rows": [
+        [
+          "Customer",
+          "Region"
+        ]
+      ],
+      "columns": [
+        [
+          "Calendar",
+          "Year"
+        ],
+        [
+          "Calendar",
+          "Month"
+        ]
+      ],
+      "values": [
+        [
+          "Sales",
+          "Revenue"
+        ],
+        [
+          "Sales",
+          "Margin"
+        ]
+      ],
+      "retain": [
+        [
+          "Calendar",
+          "Day"
+        ]
+      ],
+      "context_complete": true
+    },
+    {
+      "id": "customer-statistics",
+      "title": "Average amount and distinct customers",
+      "rows": [
+        [
+          "Customer",
+          "Region"
+        ]
+      ],
+      "columns": [
+        [
+          "Calendar",
+          "Month"
+        ]
+      ],
+      "values": [
+        [
+          "Sales",
+          "Average amount"
+        ],
+        [
+          "Sales",
+          "Customers"
+        ]
+      ],
+      "context_complete": true
+    },
+    {
+      "id": "order-review",
+      "title": "Order calculation requiring grain review",
+      "rows": [
+        [
+          "Customer",
+          "Region"
+        ],
+        [
+          "Customer",
+          "Key"
+        ]
+      ],
+      "columns": [
+        [
+          "Calendar",
+          "Month"
+        ]
+      ],
+      "values": [
+        [
+          "Sales",
+          "Order calculation"
+        ]
+      ],
+      "context_complete": true
+    }
+  ]
+}

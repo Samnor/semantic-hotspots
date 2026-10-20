@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Add explicit matrix contracts and common PBIR pivotTable projection extraction.
+- Analyze value/filter chains, shared dependencies, hierarchy/drill context and partial coverage.
+- Suggest relationship-preserving and exploratory matrix grains with component-state rollups, retained iterator/distinct keys and conservative blockers.
+- Generate representative multi-measure detail/subtotal/grand-total queries and optional grouping-count probes.
+- Include matrix workloads in synthetic bundles and link measured benchmarks back to matrix grain reports.
+- Attach exact matching baseline workload timings without claiming pre-aggregation improvements.
+- Add fictional matrix fixtures and cross-platform regression coverage. Unsupported visual semantics remain explicit.
+
 ## 0.4.0
 
 - Add a bound, typed logical subset with explicit row/filter context and opaque unsupported expressions.

@@ -13,6 +13,7 @@ from .profile import RuntimeProfile
 from .simulation import SimulationConfig, simulate
 from .benchmark import collect_benchmarks, run_benchmarks
 from .experiments import prepare_rewrite_experiment, collect_rewrite_results, run_rewrite_experiment
+from .matrices import analyze_matrices, load_matrices
 
 
 def _positive(value: str) -> int:
@@ -47,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     mock = commands.add_parser('simulate', help='Generate seeded mock CSVs, an isolated Import BIM, workloads and HTML; does not execute DAX')
     mock.add_argument('model', type=Path)
     mock.add_argument('-o', '--output', type=Path, default=Path('synthetic-lab'))
+    mock.add_argument('--matrices', type=Path, help='Matrix specs or a PBIR .Report folder; adds multi-measure contexts')
     mock.add_argument('--config', type=Path, help='JSON SimulationConfig settings')
     mock.add_argument('--seed', type=int)
     mock.add_argument('--fact-rows', type=_positive)
@@ -78,8 +80,20 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument('--timeout', type=_positive, default=300)
     run.add_argument('--collect-only', action='store_true')
     run.add_argument('--trace-verified', action='store_true')
+    matrix = commands.add_parser('matrices', help='Analyze matrix hierarchies, dependencies and candidate aggregation grains')
+    matrix.add_argument('model', type=Path)
+    matrix.add_argument('--matrices', type=Path, required=True, help='Explicit matrix-spec JSON or common PBIR .Report/definition folder')
+    matrix.add_argument('-o', '--output', type=Path, default=Path('matrix-report'))
+    matrix.add_argument('--benchmark-results', type=Path, help='Attach matching benchmark.json workload durations')
     args = parser.parse_args(argv)
     try:
+        if args.command == 'matrices':
+            benchmark = json.loads(args.benchmark_results.read_text(encoding='utf-8-sig')) if args.benchmark_results else None
+            result = analyze_matrices(args.model, args.matrices, benchmark=benchmark)
+            files = result.write(args.output)
+            print(f'{len(result.matrices)} matrices; {len(result.workloads)} representative multi-measure contexts. Rank={result.rank_by}.')
+            print(f'HTML: {files["html"].resolve()}\nAggregation advice is unvalidated; no summary tables or model changes were made.')
+            return 0
         if args.command == 'experiment':
             output = prepare_rewrite_experiment(args.bundle, args.output, top=args.top)
             print(f'Rewrite proposals and paired queries: {output}\nHTML: {output / "experiment.html"}\nEngine validation and timing have not run.')
@@ -103,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == 'simulate':
             settings = json.loads(args.config.read_text(encoding='utf-8-sig')) if args.config else {}
             settings = SimulationConfig.from_dict(settings).__dict__.copy()
+            if args.matrices:
+                settings['matrices'] = [s.to_dict() for s in load_matrices(args.matrices)]
             for option in ['seed', 'fact_rows', 'dimension_rows', 'data_root']:
                 if getattr(args, option) is not None:
                     settings[option] = getattr(args, option)

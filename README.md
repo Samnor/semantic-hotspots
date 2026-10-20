@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.4.0/semantic_hotspots-0.4.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.5.0/semantic_hotspots-0.5.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.4.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.5.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and DAX Studio; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -331,6 +331,89 @@ Equality covers **finite tested contexts**, not universal semantic equivalence. 
 
 Query-scoped output collection follows the [DAX Studio CSV command](https://daxstudio.org/docs/features/command-line/commands/csv-command/). Rewrite guards use Microsoft's [SUMX](https://learn.microsoft.com/en-us/dax/sumx-function-dax) and [FILTER](https://learn.microsoft.com/en-us/dax/filter-function-dax) semantics. The design borrows the separation of analyzed logical structures and optimization rules illustrated by [Spark EXPLAIN](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-explain.html).
 
+## Matrix-specific grain analysis
+
+Analyze a matrix's row hierarchy, column hierarchy, explicit value measures, enumerated column filters, potential slicer/drill columns and totals together:
+
+```powershell
+python -m semantic_hotspots matrices examples/matrix-model.bim --matrices examples/matrices.json -o matrix-report
+# Or extract common explicit bindings from an exported PBIR report:
+python -m semantic_hotspots matrices model.bim --matrices Retail.Report -o matrix-report
+```
+
+Open `matrix-report/report.html`. The highest known measure-chain review priorities come first. Each matrix expands into value/filter measure chains, shared dependencies, exact DAX, unsupported context, aggregation components, proposed grains, grouping-count probes where eligible, and representative multi-measure queries. JSON and editable normalized specifications sit beside the report.
+
+An explicit specification looks like:
+
+```json
+{
+  "schema_version": "1.0",
+  "matrices": [{
+    "id": "monthly-revenue",
+    "title": "Monthly revenue",
+    "rows": [["Customer", "Region"]],
+    "columns": [["Calendar", "Year"], ["Calendar", "Month"]],
+    "values": [["Sales", "Revenue"], ["Sales", "Margin"]],
+    "filters": [{"table": "Customer", "column": "Region", "values": ["North"]}],
+    "retain": [["Calendar", "Day"]],
+    "row_subtotals": true,
+    "column_subtotals": true,
+    "grand_total": true,
+    "context_complete": true
+  }]
+}
+```
+
+`rows` and `columns` are ordered hierarchy levels. `values` and `filter_measures` contain `[table, measure]` pairs; names bind case-insensitively. `retain` lists additional columns that future slicers/drill states must preserve. Optional `drill_states` entries have a unique `name`, `row_depth`, `column_depth`, and additional enumerated `filters`. Depths select hierarchy prefixes; base and state filters must not repeat the same column. Limits are 16 axis fields and 256 generated contexts per matrix.
+
+`context_complete` defaults to **false**. Set it true only when the specification deliberately covers the required filters/drill behavior. This declaration is not engine proof. A `filter_measures` entry records a visual-level filtering dependency; because its predicate/grain is unspecified, executable workloads and safe aggregation claims are withheld. `unsupported` records features requiring manual review, such as TopN, visual calculations or unmodeled interaction filters. Unknown fields/measures and missing definitions remain visible rather than invented.
+
+### What grain advice means
+
+For a matrix grouped by region and month, the report distinguishes:
+
+- **Relationship-preserving grain:** retain fact-side customer/date keys needed for unique active regular many-to-one filter paths. This can reduce repeated fact rows while retaining the existing dimensions; it may be finer than the displayed matrix.
+- **Exploratory matrix/filter grain:** group by the displayed and explicitly retained/filter columns. Dropping customer/date keys requires dimension remapping and complete filter/security validation. A day-level retained filter prevents an unconditional monthly-only recommendation.
+
+The initial component analysis recognizes direct physical numeric `SUM`, `MIN`, `MAX`, `AVERAGE`, `COUNT`, physical-table `COUNTROWS`, physical-column `DISTINCTCOUNT`, simple numeric-column `SUMX`, scalar arithmetic and `DIVIDE` over supported components/referenced measures. It proposes SUM plus nonblank COUNT for averages; distinct keys are retained for recomputing DISTINCTCOUNT. Ratios/arithmetic are re-evaluated after state rollup, not summed or averaged from matrix cells. Missing/opaque formulas, VAR contexts, row-dependent calculations, multiple facts, unsupported filter paths, calculation groups/functions/dynamic formats and security gaps produce review blockers. Recognized leaf components and possible iteration/predicate keys can still guide manual review; they do not authorize a rewrite.
+
+Where no recognized static blocker remains, a **group-count probe** compares fact row count with the distinct retained-key combinations under base matrix filters. Counts and speedup remain unknown until executed; state-specific filters require separate counts. The library never substitutes a Cartesian product of dimension cardinalities for an observed grouping count. It creates no aggregation tables, SQL materializations, storage mappings, or rewritten measure chains. The coarser grain is a hypothesis for source/model/DAX-intermediate experiments, not a proven optimal grain.
+
+### Benchmark detail, subtotals and totals together
+
+Add the matrices to a synthetic bundle:
+
+```powershell
+python -m semantic_hotspots simulate examples/matrix-model.bim --matrices examples/matrices.json --fact-rows 100000 -o synthetic-lab
+# After loading and refreshing the separate synthetic BIM in a test engine:
+python -m semantic_hotspots benchmark synthetic-lab --dscmd "C:\Program Files\DAX Studio\dscmd.exe" --server localhost:PORT --database SYNTHETIC_DATABASE --warm 5 --cold 0
+```
+
+`synthetic-lab/matrix-analysis/report.html` contains grain advice. The bundle's ordinary `benchmark` command now also times **multi-measure matrix contexts**. It emits full-detail and configured prefix subtotal/grand-total contexts, recomputing original measures in each context, including ratios and scope-dependent measures. These are separate representative queries; they do not reproduce the exact Power BI ROLLUPADDISSUBTOTAL flags, visual-level measure filtering, data reduction, show-items-with-no-data, field parameters, visual calculations, sorting/expansion behavior or visual rendering. They are baseline workloads, **not an A/B test of a materialized aggregation**. The existing rewrite experiment remains a separate per-measure workflow and does not automatically test these proposed grains.
+
+To attach matching observed workload means to a matrix report:
+
+```powershell
+python -m semantic_hotspots matrices examples/matrix-model.bim --matrices examples/matrices.json --benchmark-results synthetic-lab/benchmark-results/benchmark.json -o matrix-report-measured
+```
+
+Only matching workload identities and query text are attached; identities include the matrix contract and model definitions/types/relationships. They do not verify synthetic CSV contents or generation settings; review the original simulation manifest. The report retains the capture's source-model/seed provenance. Matrices then rank by their highest known synthetic context mean, without summing shared measures or multiplying by cell counts. Missing contexts stay unknown; partial iteration counts are shown. Import-mode durations do not predict the original DirectQuery model, source latency, visual rendering or aggregation speedup.
+
+```python
+from semantic_hotspots import analyze_matrices, load_matrices, SimulationConfig, simulate
+
+specs = load_matrices("examples/matrices.json")
+result = analyze_matrices("examples/matrix-model.bim", specs)
+result.write("matrix-report")
+simulate("examples/matrix-model.bim", "synthetic-lab", config=SimulationConfig(
+    matrices=[spec.to_dict() for spec in specs], fact_rows=100_000,
+))
+```
+
+PBIR extraction reads common `pivotTable` Column/Measure projections from a `.Report/definition/pages/.../visual.json` tree, a definition folder, or a single visual file. It retains report slicer column bindings conservatively but does not know their current selections. Implicit aggregations, hierarchy/parameter expressions, extra roles and observed untranslated report/page/visual filters are flagged. Review the exported `matrix-specs.json` and supply an explicit contract before treating it as a complete visual. Binary PBIX and legacy report.json conversion are unsupported.
+
+The format follows Microsoft's [PBIR report definition](https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-report) and [matrix projection example](https://github.com/microsoft/skills-for-fabric/blob/main/skills/powerbi-report-cli/references/authoring/table.md). Exact visual-query validation remains a separate step; [Performance Analyzer](https://learn.microsoft.com/en-us/power-bi/create-reports/performance-analyzer) can capture the actual query and interactions.
+
 ## Rule references
 
 The rule text was checked against these primary sources. Examples and advice are paraphrased; no page content is bundled.
@@ -342,7 +425,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.4.0.
+MIT licensed. Version 0.5.0.
 
 ## Contributing and data handling
 

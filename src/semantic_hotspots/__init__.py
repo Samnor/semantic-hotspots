@@ -12,7 +12,10 @@ __all__ = ['Analysis', 'CycleError', 'DependencyGraph', 'Entity', 'Model', 'Mode
            'SimulationBundle', 'SimulationConfig', 'simulate', 'BenchmarkResults',
            'collect_benchmarks', 'read_benchmark_csv', 'run_benchmarks',
            'LogicalNode', 'RewritePlan', 'plan_rewrites', 'RewriteResults',
-           'prepare_rewrite_experiment', 'collect_rewrite_results', 'run_rewrite_experiment']
+           'prepare_rewrite_experiment', 'collect_rewrite_results', 'run_rewrite_experiment',
+           'MatrixSpec', 'MatrixAnalysis', 'load_matrices', 'analyze_matrices']
 
 from .optimizer import LogicalNode, RewritePlan, plan_rewrites
 from .experiments import RewriteResults, prepare_rewrite_experiment, collect_rewrite_results, run_rewrite_experiment
+
+from .matrices import MatrixSpec, MatrixAnalysis, load_matrices, analyze_matrices
