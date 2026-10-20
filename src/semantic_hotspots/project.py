@@ -229,26 +229,31 @@ def _embed(bim,bundle):
     return size
 
 
+def _comparison_queries(group_by,changes):
+    groups=[Entity('column',p[0],p[1]).qualified_name for p in group_by]
+    projections={'baseline':[],'candidate':[],'validation':[]}
+    for i,change in enumerate(changes,1):
+        before=Entity('measure',change['table'],change['original_name']).qualified_name
+        after=Entity('measure',change['table'],change['candidate']['name']).qualified_name
+        projections['baseline'].append(f'"Value_{i}", {before}')
+        projections['candidate'].append(f'"Value_{i}", {after}')
+        projections['validation'] += [f'"Original_{i}", {before}',f'"Candidate_{i}", {after}',
+            f'"Equal_{i}", IF(ISBLANK({before}) == ISBLANK({after}) && {before} == {after}, 1, 0)',
+            f'"OriginalBlank_{i}", IF(ISBLANK({before}), 1, 0)',f'"CandidateBlank_{i}", IF(ISBLANK({after}), 1, 0)']
+    result={}
+    for kind,fields in projections.items():
+        expression=('SUMMARIZECOLUMNS('+', '.join(groups+fields)+')') if groups else 'ROW('+', '.join(fields)+')'
+        result[kind]='EVALUATE\n'+expression+'\n'
+    return result
+
+
 def _queries(root,analysis,row,changes,summary,fact):
     results=[]
     for workload in analysis.workloads:
         if workload['matrix_id']!=row['id']:continue
-        # Workloads already bind and quote each group; recover the model via
-        # explicit pairs rather than editing user DAX or generated query text.
-        groups=[Entity('column',p[0],p[1]).qualified_name for p in workload['group_by']]
-        projections={'baseline':[],'candidate':[],'validation':[]}
-        for i,change in enumerate(changes,1):
-            before=Entity('measure',change['table'],change['original_name']).qualified_name
-            after=Entity('measure',change['table'],change['candidate']['name']).qualified_name
-            projections['baseline'].append(f'"Value_{i}", {before}')
-            projections['candidate'].append(f'"Value_{i}", {after}')
-            projections['validation'] += [f'"Original_{i}", {before}',f'"Candidate_{i}", {after}',
-                f'"Equal_{i}", IF(ISBLANK({before}) == ISBLANK({after}) && {before} == {after}, 1, 0)',
-                f'"OriginalBlank_{i}", IF(ISBLANK({before}), 1, 0)',f'"CandidateBlank_{i}", IF(ISBLANK({after}), 1, 0)']
         files={}
-        for kind,fields in projections.items():
-            expression=('SUMMARIZECOLUMNS('+', '.join(groups+fields)+')') if groups else 'ROW('+', '.join(fields)+')'
-            query='EVALUATE\n'+expression+'\n'; filename=f'queries/{workload["id"]}-{kind}.dax'
+        for kind,query in _comparison_queries(workload['group_by'],changes).items():
+            filename=f'queries/{workload["id"]}-{kind}.dax'
             (root/filename).parent.mkdir(exist_ok=True);(root/filename).write_text(query,encoding='utf-8',newline='\n')
             files[kind]={'file':filename,'sha256':hashlib.sha256(query.encode()).hexdigest()}
         results.append({'scenario':workload['scenario'],'group_by':workload['group_by'],'queries':files})
@@ -348,7 +353,9 @@ def export_project(source,matrices,directory,*,matrix_id=None,config=None):
         instructions=('POWER BI SHOWCASE\n\n1. Open Showcase.pbip in a current Power BI Desktop on Windows with PBIP/PBIR support.\n'
                       '2. Refresh the model. Synthetic CSV data is embedded in the project M partitions; no external sources or path edits are needed.\n'
                       '3. Inspect the single matrix: Baseline and Candidate values share the same dimension context. This is an unvalidated candidate, not a measured improvement.\n'
-                      '4. Use the optional direct ADOMD client (Windows [engine] extra) or DAX Studio. engine-sessions lists Desktop endpoints/databases. Run each queries/*-validation.dax: all Equal flags must be 1, BLANK flags must match, and meaningful nonblank baseline values must exist.\n'
+                      '4. Launch python -m semantic_hotspots studio for guided generation/validation, or run showcase-run on this project with an explicit local server/database. Use the Windows [engine] extra and engine-setup for the official client.\n'
+                      '   py -m semantic_hotspots showcase-run . --server localhost:PORT --database DATABASE\n'
+                      '   For manual inspection, run each queries/*-validation.dax: all Equal flags must be 1, BLANK flags must match, and meaningful nonblank baseline values must exist for every measure pair.\n'
                       '   py -m semantic_hotspots query queries/QUERY-validation.dax --server localhost:PORT --database DATABASE -o validation.csv\n'
                       '5. Only after correctness checks, time the separate baseline/candidate queries on the same model/data/hardware and cache settings. The combined visual is not a speed comparison.\n'
                       '   Use query --benchmark --warm 5 for each baseline/candidate file with separate -o CSV paths. Timings include client result reading and are not server CPU/FE/SE.\n'

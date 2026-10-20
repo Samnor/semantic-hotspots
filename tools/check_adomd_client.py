@@ -5,34 +5,18 @@ DLL or engine is distributed, and no endpoint is contacted by this check.
 """
 from __future__ import annotations
 
-import hashlib
-import io
 import sys
 import subprocess
 import tempfile
-import urllib.request
-import zipfile
 from pathlib import Path
 
 
 def main():
     if sys.platform != 'win32':
         raise SystemExit('This client integration check requires Windows')
-    url = ('https://api.nuget.org/v3-flatcontainer/microsoft.analysisservices.adomdclient/'
-           '19.118.3/microsoft.analysisservices.adomdclient.19.118.3.nupkg')
-    with urllib.request.urlopen(url, timeout=60) as response:
-        raw = response.read(64*1024*1024+1)
-    if hashlib.sha256(raw).hexdigest() != 'fb16292dcc7c9b37d6c21b64e8cd6bab4a336df561d3c1ef437476aaa109afff':
-        raise ValueError('Pinned ADOMD package checksum mismatch')
+    from semantic_hotspots.client_setup import install_adomd
     with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-            for member in archive.namelist():
-                if member.startswith('lib/net472/') and member.endswith('.dll'):
-                    destination = root/Path(member).name
-                    # Only the top-level assembly; satellites share a basename.
-                    if member.count('/') == 2:
-                        destination.write_bytes(archive.read(member))
+        root = install_adomd(Path(directory)/'client').parent
         subprocess.run([sys.executable, str(Path(__file__).resolve()), '--check', str(root)], check=True, timeout=60)
     print('Official ADOMD client loaded; invariant .NET value serialization passed. No DAX engine execution was tested.')
 

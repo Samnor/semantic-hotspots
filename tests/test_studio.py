@@ -1,0 +1,119 @@
+"""Local workflow and HTTP-boundary regressions with synthetic fixtures."""
+import http.client
+import json
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from semantic_hotspots import ModelError
+from semantic_hotspots.studio import make_server
+
+
+class StudioTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)
+        self.server=make_server(self.root,self.root/'output')
+        self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start()
+        self.addCleanup(self.server.server_close);self.addCleanup(self.server.shutdown)
+        self.origin=f'http://127.0.0.1:{self.server.server_port}'
+        self.headers={'Authorization':'Bearer '+self.server.studio.token,'Origin':self.origin,'Content-Type':'application/json'}
+
+    def request(self,method,path,body=None,headers=None):
+        conn=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=5)
+        conn.request(method,path,json.dumps(body) if body is not None else None,headers or {})
+        response=conn.getresponse();data=response.read();status=response.status;h=dict(response.getheaders());conn.close()
+        return status,data,h
+
+    def test_session_origin_and_host_protect_workspace_and_actions(self):
+        self.assertEqual(self.request('GET','/')[0],200)
+        self.assertEqual(self.request('GET','/api/state')[0],403)
+        self.assertEqual(self.request('GET','/api/state',headers=self.headers)[0],200)
+        self.assertEqual(self.request('POST','/api/session',{},self.headers)[0],200)
+        wrong=dict(self.headers,Origin='https://elsewhere.example')
+        self.assertEqual(self.request('POST','/api/action',{'action':'demo'},wrong)[0],403)
+        wrong=dict(self.headers,Host='elsewhere.example')
+        self.assertEqual(self.request('GET','/api/state',headers=wrong)[0],403)
+        cookie=self.request('POST','/api/session',{},self.headers)[2]['Set-Cookie']
+        self.assertIn('HttpOnly',cookie);self.assertIn('SameSite=Strict',cookie)
+
+    def test_browser_is_confined_and_does_not_serve_workspace_files(self):
+        (self.root/'input.bim').write_text('{}')
+        self.assertEqual(self.request('GET','/api/browse?path=..',headers=self.headers)[0],400)
+        status,body,_=self.request('GET','/api/browse',headers=self.headers)
+        self.assertEqual(status,200);self.assertEqual(json.loads(body)['entries'][0]['name'],'input.bim')
+        self.assertEqual(self.request('GET','/input.bim',headers=self.headers)[0],404)
+        studio=self.server.studio
+        key,root=studio.new_artifact();root.mkdir();(root/'report.html').write_text('Synthetic')
+        path=f'/artifacts/{key}/report.html'
+        self.assertEqual(self.request('GET',path)[0],403)
+        cookie={'Cookie':'studio='+studio.token}
+        self.assertEqual(self.request('GET',path,headers=cookie)[0],200)
+        self.assertEqual(self.request('GET',f'/artifacts/{key}/../input.bim',headers=cookie)[0],400)
+
+    def test_bundled_demo_drives_analysis_generation_and_portable_download(self):
+        studio=self.server.studio
+        studio.dispatch('demo',{})
+        state=studio.snapshot()
+        self.assertTrue(state['measures']);self.assertTrue(state['matrices'])
+        eligible=[m for m in state['matrices'] if m['eligible']]
+        blocked=[m for m in state['matrices'] if not m['eligible']]
+        self.assertTrue(eligible);self.assertTrue(blocked)
+        with self.assertRaises(ModelError):studio.dispatch('generate',{'matrix':blocked[0]['id']})
+        studio.dispatch('generate',{'matrix':eligible[0]['id'],'fact_rows':50,'dimension_rows':4})
+        project=studio.snapshot()['project']
+        self.assertTrue(Path(project['directory'],'Showcase.pbip').is_file())
+        self.assertEqual(project['manifest']['engine_validation'],'not_run')
+        self.assertTrue(studio.artifact(project['key'],'showcase.zip').is_file())
+        with self.assertRaises(ModelError):studio.dispatch('run',{'server':'localhost:123','database':'Unknown'})
+
+    def test_matrix_review_keeps_unsupported_context_and_cannot_bypass_guards(self):
+        studio=self.server.studio;studio.dispatch('demo',{})
+        original=studio.specs[0].to_dict();original['unsupported']=['Unknown visual calculation']
+        original['context_complete']=False
+        from semantic_hotspots import MatrixSpec
+        studio.specs=[MatrixSpec.from_dict(original)]
+        with self.assertRaises(ModelError):studio.dispatch('matrix',{'id':original['id']})
+        studio.dispatch('matrix',{'id':original['id'],'reviewed':True})
+        self.assertFalse(studio.snapshot()['matrices'][0]['eligible'])
+        self.assertIn('Unknown visual calculation',studio.snapshot()['matrices'][0]['blocked_reason'])
+
+    def test_recorded_contexts_rank_first_without_inventing_matrix_title_matches(self):
+        from test_performance import recording
+        from semantic_hotspots import read_performance_analyzer
+        studio=self.server.studio;studio.dispatch('demo',{})
+        studio.performance=read_performance_analyzer(studio.model,recording())
+        studio.analyze_current()
+        state=studio.snapshot()
+        self.assertEqual(state['measures'][0]['recorded_dax_context_ms'],200)
+        self.assertEqual(state['matrices'][0]['id'],'monthly-margin')
+        self.assertEqual(state['matrices'][0]['recorded_dax_context_ms'],200)
+        studio.performance['queries'][0]['visual_id']='unmatched'
+        studio.analyze_current()
+        self.assertTrue(all(m['recorded_dax_context_ms'] is None for m in studio.snapshot()['matrices']))
+
+    def test_discovery_hints_match_all_measure_definitions_without_auto_selection(self):
+        studio=self.server.studio;studio.dispatch('demo',{})
+        studio.dispatch('generate',{'matrix':'monthly-margin','fact_rows':30})
+        project=studio.snapshot()['project']
+        bim=json.loads(Path(project['directory'],'Showcase.SemanticModel/model.bim').read_text())
+        def query(file,output,**kwargs):
+            import csv
+            with Path(output).open('w',newline='',encoding='utf-8') as stream:
+                writer=csv.writer(stream)
+                if Path(file).stem=='TABLES':
+                    writer.writerow(['[ID]','[Name]']);writer.writerows((i,t['name']) for i,t in enumerate(bim['model']['tables']))
+                else:
+                    writer.writerow(['[TableID]','[Name]','[Expression]'])
+                    writer.writerows((i,m['name'],m['expression']) for i,t in enumerate(bim['model']['tables']) for m in t.get('measures',[]))
+        sessions=[{'server':'localhost:123','databases':['Fictional'],'error':None}]
+        with patch('semantic_hotspots.studio.desktop_sessions',return_value=sessions),patch('semantic_hotspots.studio.query_to_csv',side_effect=query):
+            studio.dispatch('discover',{})
+        state=studio.snapshot()
+        self.assertTrue(state['sessions'][0]['models'][0]['matches_project'])
+        self.assertIsNone(state['result'])
+
+
+if __name__=='__main__':unittest.main()

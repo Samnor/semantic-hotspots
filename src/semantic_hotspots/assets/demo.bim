@@ -1,0 +1,142 @@
+{
+  "name": "Fictional matrix lab",
+  "model": {
+    "tables": [
+      {
+        "name": "Sales",
+        "columns": [
+          {
+            "name": "CustomerKey",
+            "dataType": "int64"
+          },
+          {
+            "name": "Date",
+            "dataType": "dateTime"
+          },
+          {
+            "name": "Amount",
+            "dataType": "double"
+          },
+          {
+            "name": "Cost",
+            "dataType": "double"
+          },
+          {
+            "name": "DateKey",
+            "dataType": "int64"
+          },
+          {
+            "name": "OrderKey",
+            "dataType": "int64"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Sales",
+            "mode": "directQuery"
+          }
+        ],
+        "measures": [
+          {
+            "name": "Revenue",
+            "expression": "SUM(Sales[Amount])"
+          },
+          {
+            "name": "Revenue twice",
+            "expression": "[Revenue] + [Revenue]"
+          },
+          {
+            "name": "Customer calculation",
+            "expression": "SUMX(VALUES(Customer[Key]), CALCULATE([Revenue twice]))"
+          },
+          {
+            "name": "Visible revenue",
+            "expression": "CALCULATE([Revenue], FILTER(Customer, [Revenue] > 0))"
+          },
+          {
+            "name": "Display revenue",
+            "expression": "FORMAT([Customer calculation], \"#,##0.00\")"
+          },
+          {
+            "name": "Cost total",
+            "expression": "SUM(Sales[Cost])"
+          },
+          {
+            "name": "Margin",
+            "expression": "DIVIDE([Revenue]-[Cost total], [Revenue])"
+          },
+          {
+            "name": "Average amount",
+            "expression": "AVERAGE(Sales[Amount])"
+          },
+          {
+            "name": "Customers",
+            "expression": "DISTINCTCOUNT(Sales[CustomerKey])"
+          },
+          {
+            "name": "Order calculation",
+            "expression": "SUMX(VALUES(Sales[OrderKey]), CALCULATE([Revenue]))"
+          }
+        ]
+      },
+      {
+        "name": "Customer",
+        "columns": [
+          {
+            "name": "Key",
+            "dataType": "int64"
+          },
+          {
+            "name": "Region",
+            "dataType": "string"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Customer",
+            "mode": "import"
+          }
+        ]
+      },
+      {
+        "name": "Calendar",
+        "columns": [
+          {
+            "name": "Key",
+            "dataType": "int64"
+          },
+          {
+            "name": "Year",
+            "dataType": "int64"
+          },
+          {
+            "name": "Month",
+            "dataType": "string"
+          },
+          {
+            "name": "Day",
+            "dataType": "dateTime"
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "name": "SalesCustomer",
+        "fromTable": "Sales",
+        "fromColumn": "CustomerKey",
+        "toTable": "Customer",
+        "toColumn": "Key",
+        "crossFilteringBehavior": "oneDirection",
+        "isActive": true
+      },
+      {
+        "name": "SalesCalendar",
+        "fromTable": "Sales",
+        "fromColumn": "DateKey",
+        "toTable": "Calendar",
+        "toColumn": "Key"
+      }
+    ]
+  }
+}

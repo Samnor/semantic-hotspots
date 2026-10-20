@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+- Add dependency-free local Studio: workspace file browsing, bundled fictional demo, ranked findings, optional native Performance Analyzer v1 import, matrix context review/builder, guarded generation, ZIP download and Windows Desktop opening.
+- Discover loaded models with matching-definition hints while requiring explicit selection. Add an explicit checksum-verified installer for the pinned official x64 Windows ADOMD .NET Framework client; client DLLs remain outside distributions.
+- Add showcase-run and a Python API to verify generated definitions/physical counts, check every prefix context and BLANK flag, withhold all timing for failed or all-BLANK pairs, then time separate baseline/candidate paths.
+- Retain canonical query/model hashes, raw results, progress and failure reports; recheck loaded definitions/row counts and project files after timing. Exclude one explicit warm-up, alternate workload order across contexts, and label overlapping/noisy results inconclusive.
+- Protect the loopback interface with a per-session token, same-origin POST checks and bounded workspace/artifact browsing. Native recording timings remain shared DAX query contexts, never isolated measure cost or CPU/FE/SE.
+- Add invented regression coverage and Windows/Linux install checks. This new guided orchestrator has not yet been rerun against a live Desktop engine; the earlier bounded 0.7.1 integration evidence still applies to the exporter/client foundations.
+
 ## 0.7.1
 
 - Discover local catalogs through ADOMD XMLA schema discovery instead of routing schema SQL through DAX execution.

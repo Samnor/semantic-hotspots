@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.7.1/semantic_hotspots-0.7.1-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.8.0/semantic_hotspots-0.8.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,10 +19,36 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.7.1"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.8.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
+
+## Guided local workflow
+
+After installing, launch Studio from your virtual environment:
+
+```powershell
+python -m semantic_hotspots studio --workspace .
+```
+
+The command opens a local browser interface. Select a PBIP, BIM or TMDL model within your workspace, or click **Try synthetic demo**; the demo is included in the wheel. You can browse an adjacent PBIR report, load existing matrix specifications, or build a matrix by selecting its rows, columns and measures. Imported PBIR contexts require explicit review; unsupported filters, roles and visual behavior remain blockers.
+
+Studio walks through ranked findings, proposed summary grains, one-page comparison generation and validation. Download the whole generated ZIP, or use **Open in Power BI Desktop** on Windows. Opening and refreshing remain explicit Desktop steps. Then find the loaded models, choose the comparison using the matching-definition hint, and click **Validate, then benchmark**. Ports, query filenames and CSV flags are handled by the workflow. A matching hint does not auto-select or fully attest a loaded model.
+
+Optionally choose a native **Performance Analyzer version 1.0.0 JSON export** when opening a model. Known recorded DAX contexts sort first; unknown contexts retain static priority. Measure associations use bound query references, and matrix associations require an exact unambiguous visual ID. Titles are not fuzzy-matched. These are inclusive/shared DSE wall-clock query durations through first row, not isolated measure cost, full result-reading time, CPU or FE/SE. Missing/truncated events and query-scoped bindings stay explicit. See Microsoft's [export schema](https://github.com/microsoft/powerbi-desktop-samples/blob/main/Performance%20Analyzer/performanceAnalyzerExport.schema.json) and [event-format documentation](https://github.com/microsoft/powerbi-desktop-samples/blob/main/Performance%20Analyzer/Power%20BI%20Performance%20Analyzer%20Export%20File%20Format.docx). Recordings are read offline and never executed.
+
+For Windows engine access, install this release with `[engine]` as shown below, then use **Download & install official client** in engine setup, or run:
+
+```powershell
+python -m semantic_hotspots engine-setup
+```
+
+This explicit action downloads the pinned official Microsoft ADOMD 19.118.3 package over HTTPS, checks its SHA256, and extracts the x64 .NET Framework client plus dependencies into a per-user cache. The downloaded SDK is detected automatically. No engine, Python.NET or model is installed by this command. It requires x64 Python on x64 Windows. Existing unknown/modified SDK directories are not overwritten. An independently installed SDK can still be selected explicitly.
+
+Studio binds only to `127.0.0.1`, uses a session token and same-origin POST checks, and serves only registered generated artifacts. Model/source data is not uploaded; the SDK setup button is the explicit external download. Generated files remain under `.semantic-hotspots-ui` by default. Use `-o OUTPUT` to choose another directory, `--no-browser` to print the local URL, and Ctrl+C to stop the server. The GUI is local; it is not a multi-user hosted service.
+
+The guided runner is covered by synthetic orchestration, HTTP and browser-flow checks. Its engine workflow has not yet been rerun end-to-end in live Desktop. The earlier Windows integration check below exercised the exporter and direct-client foundations with manual orchestration.
 
 ## Analyze a semantic model
 
@@ -231,7 +257,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.7.1/semantic_hotspots-0.7.1-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.8.0/semantic_hotspots-0.8.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -239,7 +265,7 @@ python -m semantic_hotspots experiment-run rewrite-experiment --server localhost
 
 Open and refresh the intended synthetic model first. `engine-sessions` lists local Desktop endpoints and their catalog names; select both explicitly. Discovery uses best-effort workspace paths that can change or contain stale entries. `engine-sessions --server localhost:PORT` probes an explicit local endpoint when discovery is unavailable. The library does not identify a model by its open window title or attest that the selected database has the intended data.
 
-The direct backend is a thin client using [Microsoft ADOMD.NET](https://learn.microsoft.com/analysis-services/client-libraries) through [Python.NET](https://pythonnet.github.io/pythonnet/python.html). It uses the actual loaded DAX engine. It is **not an emulator**, and does not need a DAX Studio installation. Python.NET installs via pip; Microsoft's DLL is not bundled or downloaded. The normal Desktop installation's `bin` directory is searched, but current installations may contain only an internal `Microsoft.PowerBI.AdomdClient.dll`; that is not the public SDK used here. If the public client is absent, install Microsoft's [ADOMD client package](https://www.nuget.org/packages/Microsoft.AnalysisServices.AdomdClient/) separately and pass `--adomd-path` to its trusted `Microsoft.AnalysisServices.AdomdClient.dll` or directory. Preserve the package's required managed and native dependencies. Microsoft Store installations may also require an explicit accessible client DLL. The default runtime is .NET Framework (`netfx`); a .NET Core client DLL needs an installed compatible .NET runtime and `--dotnet-runtime coreclr`. Match client/Python architecture and runtime; copying a DLL without its dependencies may not work.
+The direct backend is a thin client using [Microsoft ADOMD.NET](https://learn.microsoft.com/analysis-services/client-libraries) through [Python.NET](https://pythonnet.github.io/pythonnet/python.html). It uses the actual loaded DAX engine. It is **not an emulator**, and does not need a DAX Studio installation. Python.NET installs via pip; Microsoft's DLL is not bundled or downloaded during ordinary query execution. The explicit `engine-setup` command or Studio setup button can install the pinned official client. The normal Desktop installation's `bin` directory is searched, but current installations may contain only an internal `Microsoft.PowerBI.AdomdClient.dll`; that is not the public SDK used here. If the public client is absent, install Microsoft's [ADOMD client package](https://www.nuget.org/packages/Microsoft.AnalysisServices.AdomdClient/) separately and pass `--adomd-path` to its trusted `Microsoft.AnalysisServices.AdomdClient.dll` or directory. Preserve the package's required managed and native dependencies. Microsoft Store installations may also require an explicit accessible client DLL. The default runtime is .NET Framework (`netfx`); a .NET Core client DLL needs an installed compatible .NET runtime and `--dotnet-runtime coreclr`. Match client/Python architecture and runtime; copying a DLL without its dependencies may not work.
 
 ADOMD currently supports **local loopback endpoints and warm iterations only**. Each workload runs in an isolated Python subprocess with a wall-clock timeout, so a blocked .NET call cannot hang the parent indefinitely. One connection is reused for that workload's iterations. Timings start after connection setup and include execution, result transfer, and complete client reading/conversion. Warm means no cache clearing, including the first iteration; it does not guarantee a prewarmed cache. CPU, FE and SE remain unknown, even if a collected CSV is read with `--trace-verified`. These are observed client elapsed times, not server-only timings, production predictions, or CU estimates. The backend does not refresh/deploy/edit the model or clear its cache.
 
@@ -252,7 +278,7 @@ python -m semantic_hotspots query powerbi-showcase/queries/QUERY-baseline.dax --
 python -m semantic_hotspots query powerbi-showcase/queries/QUERY-candidate.dax --server localhost:PORT --database DATABASE --benchmark --warm 5 -o candidate-timing.csv
 ```
 
-Replace `QUERY-*` with actual generated filenames. Existing output files are never overwritten. Inspect all equality/BLANK flags and meaningful nonblank values before timing; a successful query alone is not a correctness verdict. Benchmark CSVs can be read with `read_benchmark_csv`. Showcase validation/A/B comparison remains a separate manual workflow using these queries; `experiment-run` accepts rewrite experiments, not `showcase.json`.
+Replace `QUERY-*` with actual generated filenames. Existing output files are never overwritten. Inspect all equality/BLANK flags and meaningful nonblank values before timing; a successful query alone is not a correctness verdict. Benchmark CSVs can be read with `read_benchmark_csv`. Use `showcase-run` or Studio to automate showcase validation/A/B comparison. These individual query commands remain available for inspection; `experiment-run` accepts rewrite experiments, not `showcase.json`.
 
 The core remains dependency-free. Client orchestration and error/evidence handling have automated tests; Windows CI additionally loads the official ADOMD library and checks real .NET value serialization. A manual Windows Server 2022 check with Power BI Desktop 2.159.883.0, Python 3.14 and the explicit official ADOMD 19.118.3 .NET Framework client opened/refreshed one fictional showcase and executed its validation and timing queries. All six prefix contexts passed strict value/BLANK comparisons (40 nonblank original values); five iterations per baseline/candidate workload produced mixed median client timings of roughly 2–5 ms, so no speedup is established. This is bounded integration evidence for one fixture; CI does not launch Desktop or execute DAX. Static analysis and mock generation do not reproduce VertiPaq/Formula Engine execution or DirectQuery source behavior.
 
@@ -462,13 +488,23 @@ The showcase contains exactly **one visual**. A title/subtitle and paired value 
 
 ### Validate before calling it improved
 
-After opening and refreshing the new model, connect DAX Studio to it:
+For manual inspection after opening and refreshing the new model, use the direct client or optional DAX Studio:
 
 1. Run `queries/*-validation.dax`. Check every `Equal_*` flag is 1, BLANK flags match, and meaningful nonblank baseline values exist. Generated cases include hierarchy prefixes, subtotals and the grand total. Add empty selections, boundary cases, duplicates and representative slicers before broader claims.
 2. Run `queries/row-counts.dax` for engine counts. CSV generation and table expressions do not establish actual engine scans or row reduction.
 3. Only after correctness checks, time the separate `*-baseline.dax` and `*-candidate.dax` queries under matching data/hardware/cache conditions. The combined comparison visual executes both paths, so its duration cannot establish the candidate's speedup.
 
-These project query files are a **manual validation/A/B workflow**. The existing `experiment-run` command accepts the earlier query-scoped rewrite experiment format, not `showcase.json`. Floating-point regrouping may change results; exact comparisons fail conservatively. Finite synthetic cases do not prove production behavior, RLS equivalence, or universal correctness.
+Run the generated showcase through Studio, or use the dedicated runner:
+
+```powershell
+python -m semantic_hotspots showcase-run powerbi-showcase --server localhost:PORT --database DATABASE
+```
+
+It checks all generated measure definitions and physical row counts against the embedded mock data, validates every canonical prefix context with exact equality and BLANK flags, and requires nonblank evidence for every measure pair before any timings. It rechecks definitions/counts and local fingerprints after timing. These checks do not attest loaded data contents, relationships, partitions or security.
+
+Read `powerbi-showcase/showcase-results/report.html` and its retained query/CSV fingerprints. The runner excludes one explicit warm-up and collects seven measured iterations by default (`--warm 5` through `50`). Workload order alternates between contexts, without interleaving within a context or clearing caches. Faster/slower observations require nonoverlapping sample ranges and a median change exceeding both 10% and 1 ms; otherwise results are **inconclusive**. This is a conservative descriptive rule, not a significance test. Existing result directories are not overwritten; use `-o NEW_DIRECTORY` to repeat.
+
+The earlier `experiment-run` command accepts query-scoped rewrite experiments, not `showcase.json`. Floating-point regrouping may change results; exact comparisons fail conservatively. Finite synthetic cases do not prove production behavior, RLS equivalence, or universal correctness.
 
 ```python
 from semantic_hotspots import export_project
@@ -493,7 +529,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.7.1.
+MIT licensed. Version 0.8.0.
 
 ## Contributing and data handling
 

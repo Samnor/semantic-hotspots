@@ -16,6 +16,7 @@ from .experiments import prepare_rewrite_experiment, collect_rewrite_results, ru
 from .matrices import analyze_matrices, load_matrices
 from .project import export_project
 from .engine import desktop_sessions, query_to_csv
+from .showcase import run_showcase
 
 
 def _positive(value: str) -> int:
@@ -123,8 +124,42 @@ def main(argv: list[str] | None = None) -> int:
     project.add_argument('--fact-rows', type=_positive)
     project.add_argument('--dimension-rows', type=_positive)
     project.add_argument('-o', '--output', type=Path, default=Path('powerbi-showcase'))
+    showcase_run = commands.add_parser('showcase-run', help='Validate a generated showcase before timing separate baseline/candidate queries')
+    showcase_run.add_argument('project', type=Path)
+    showcase_run.add_argument('--server', required=True)
+    showcase_run.add_argument('--database', required=True)
+    showcase_run.add_argument('--adomd-path', type=Path)
+    showcase_run.add_argument('--dotnet-runtime', choices=['netfx', 'coreclr'], default='netfx')
+    showcase_run.add_argument('--warm', type=_positive, default=7, help='5–50 measured iterations plus one excluded warm-up')
+    showcase_run.add_argument('--timeout', type=_positive, default=120)
+    showcase_run.add_argument('-o', '--output', type=Path)
+    studio = commands.add_parser('studio', help='Open a guided local browser workflow; no sources are uploaded')
+    studio.add_argument('--workspace', type=Path, default=Path('.'))
+    studio.add_argument('-o', '--output', type=Path)
+    studio.add_argument('--port', type=int, default=0, help='Loopback port; default chooses a free port')
+    studio.add_argument('--no-browser', action='store_true')
+    setup = commands.add_parser('engine-setup', help='Explicitly download/check/install the pinned official x64 Windows ADOMD client')
+    setup.add_argument('-o', '--output', type=Path, help='Fresh install directory; default is the per-user local cache')
     args = parser.parse_args(argv)
     try:
+        if args.command == 'engine-setup':
+            from .client_setup import install_adomd
+            print(f'Official client installed: {install_adomd(args.output)}')
+            print('Use the Windows [engine] pip extra for Python.NET; open and refresh the comparison in Desktop.')
+            return 0
+        if args.command == 'studio':
+            from .studio import serve_studio
+            if not 0 <= args.port <= 65535:
+                raise ModelError('port must be between 0 and 65535')
+            serve_studio(args.workspace, output=args.output, port=args.port, open_browser=not args.no_browser)
+            return 0
+        if args.command == 'showcase-run':
+            result = run_showcase(args.project, server=args.server, database=args.database,
+                                  results_directory=args.output, adomd_path=args.adomd_path,
+                                  dotnet_runtime=args.dotnet_runtime, warm=args.warm, timeout=args.timeout,
+                                  progress=lambda message: print(message, flush=True))
+            print(f'Validation report: {result.report_path}\nPerformance: {result.data["performance_status"]}')
+            return 0 if result.data['status'] == 'completed' else 1
         if args.command == 'engine-sessions':
             result = desktop_sessions(server=args.server, adomd_path=args.adomd_path,
                                       dotnet_runtime=args.dotnet_runtime, timeout=args.timeout)

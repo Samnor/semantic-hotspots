@@ -14,7 +14,8 @@ __all__ = ['Analysis', 'CycleError', 'DependencyGraph', 'Entity', 'Model', 'Mode
            'LogicalNode', 'RewritePlan', 'plan_rewrites', 'RewriteResults',
            'prepare_rewrite_experiment', 'collect_rewrite_results', 'run_rewrite_experiment',
            'MatrixSpec', 'MatrixAnalysis', 'load_matrices', 'analyze_matrices',
-           'ProjectExport', 'export_project', 'discover_desktop_ports', 'desktop_sessions', 'query_to_csv']
+           'ProjectExport', 'export_project', 'discover_desktop_ports', 'desktop_sessions', 'query_to_csv',
+           'ShowcaseResults', 'run_showcase', 'read_performance_analyzer', 'install_adomd']
 
 from .optimizer import LogicalNode, RewritePlan, plan_rewrites
 from .experiments import RewriteResults, prepare_rewrite_experiment, collect_rewrite_results, run_rewrite_experiment
@@ -22,3 +23,6 @@ from .experiments import RewriteResults, prepare_rewrite_experiment, collect_rew
 from .matrices import MatrixSpec, MatrixAnalysis, load_matrices, analyze_matrices
 from .project import ProjectExport, export_project
 from .engine import discover_desktop_ports, desktop_sessions, query_to_csv
+from .showcase import ShowcaseResults, run_showcase
+from .performance import read_performance_analyzer
+from .client_setup import install_adomd

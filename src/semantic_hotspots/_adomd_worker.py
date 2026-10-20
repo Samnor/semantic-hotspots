@@ -29,6 +29,10 @@ def find_adomd(path=None):
         if not result.is_file():
             raise ModelError('--adomd-path must name an installed ADOMD DLL or its directory')
         return result
+    from .client_setup import client_directory, _installed
+    cached = client_directory()
+    if cached is not None and _installed(cached):
+        return cached/_DLL
     for variable in ['ProgramW6432', 'ProgramFiles']:
         base = os.environ.get(variable)
         if base:

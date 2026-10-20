@@ -49,3 +49,5 @@ smoke-matrix-lab/
 # Generated Power BI showcases
 powerbi-showcase/
 smoke-project/
+.semantic-hotspots-ui/
+showcase-results/

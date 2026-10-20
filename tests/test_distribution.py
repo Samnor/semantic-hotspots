@@ -18,7 +18,7 @@ class DistributionTests(unittest.TestCase):
     def test_local_files_and_unsafe_archive_paths_are_rejected(self):
         for path in ['private/model.bim', 'local-validation/capture.json', '.venv/lib/module.py',
                      'src/__pycache__/model.pyc', '.env', '../outside.txt', '/absolute/file.txt',
-                     'RELEASE-VERIFICATION.json', 'model.pbix']:
+                     'RELEASE-VERIFICATION.json', 'model.pbix', '.semantic-hotspots-ui/run/model.bim', 'showcase-results/results.json']:
             with self.subTest(path=path), self.assertRaises(ValueError):
                 check_entry(path, b'')
 
