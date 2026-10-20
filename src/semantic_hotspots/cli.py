@@ -14,6 +14,7 @@ from .simulation import SimulationConfig, simulate
 from .benchmark import collect_benchmarks, run_benchmarks
 from .experiments import prepare_rewrite_experiment, collect_rewrite_results, run_rewrite_experiment
 from .matrices import analyze_matrices, load_matrices
+from .project import export_project
 
 
 def _positive(value: str) -> int:
@@ -85,8 +86,25 @@ def main(argv: list[str] | None = None) -> int:
     matrix.add_argument('--matrices', type=Path, required=True, help='Explicit matrix-spec JSON or common PBIR .Report/definition folder')
     matrix.add_argument('-o', '--output', type=Path, default=Path('matrix-report'))
     matrix.add_argument('--benchmark-results', type=Path, help='Attach matching benchmark.json workload durations')
+    project = commands.add_parser('project', help='Export one comparison matrix and a separate mock-data PBIP model with a guarded summary candidate')
+    project.add_argument('model', type=Path)
+    project.add_argument('--matrices', type=Path, required=True)
+    project.add_argument('--matrix', help='Choose a specific matrix ID; default is the highest-priority eligible matrix')
+    project.add_argument('--config', type=Path, help='Synthetic data settings for tables in the selected context')
+    project.add_argument('--fact-rows', type=_positive)
+    project.add_argument('--dimension-rows', type=_positive)
+    project.add_argument('-o', '--output', type=Path, default=Path('powerbi-showcase'))
     args = parser.parse_args(argv)
     try:
+        if args.command == 'project':
+            settings=json.loads(args.config.read_text(encoding='utf-8-sig')) if args.config else {}
+            settings=SimulationConfig.from_dict(settings).__dict__.copy()
+            for option in ['fact_rows','dimension_rows']:
+                if getattr(args,option) is not None:settings[option]=getattr(args,option)
+            result=export_project(args.model,args.matrices,args.output,matrix_id=args.matrix,config=settings)
+            print(f'Power BI project: {result.project_path}\nOne page, one comparison matrix. Embedded synthetic data; refresh in Desktop.')
+            print('Summary candidate exported. Desktop/engine validation not run; performance is unknown.')
+            return 0
         if args.command == 'matrices':
             benchmark = json.loads(args.benchmark_results.read_text(encoding='utf-8-sig')) if args.benchmark_results else None
             result = analyze_matrices(args.model, args.matrices, benchmark=benchmark)

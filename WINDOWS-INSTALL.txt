@@ -1,11 +1,11 @@
-semantic-hotspots 0.5.0
+semantic-hotspots 0.6.0
 Requires Python 3.10 or later.
 
 Create a virtual environment:
   python -m venv .venv
 
 Install the universal wheel:
-  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.5.0/semantic_hotspots-0.5.0-py3-none-any.whl"
+  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.6.0/semantic_hotspots-0.6.0-py3-none-any.whl"
 
 Check the installation:
   .\.venv\Scripts\python.exe -m semantic_hotspots --version
@@ -13,7 +13,10 @@ Check the installation:
 Try the fictional example from a source checkout:
   .\.venv\Scripts\python.exe -m semantic_hotspots analyze examples\retail.bim -o reports\example
   .\.venv\Scripts\python.exe -m semantic_hotspots simulate examples\retail.bim --config examples\simulation-config.json -o synthetic-lab
+  .\.venv\Scripts\python.exe -m semantic_hotspots project examples\matrix-model.bim --matrices examples\matrices.json --matrix monthly-margin --config examples\showcase-config.json -o powerbi-showcase
 
 Open the generated HTML reports. See README.md for supported inputs, Python API, simulation settings and engine benchmark setup.
+
+For the one-matrix Power BI showcase, open powerbi-showcase\Showcase.pbip in a current Power BI Desktop with PBIP/PBIR support and refresh. Mock data is embedded. The summary candidate has not been engine-validated or timed; follow OPEN-IN-DESKTOP.txt before claiming an improvement.
 
 Parsing, analysis and generation have no runtime dependencies. Actual DAX benchmarks require a separately installed engine and DAX Studio 3.6+.

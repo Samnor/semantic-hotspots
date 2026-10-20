@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0
+
+- Export a new PBIP project containing exactly one page and one baseline/candidate comparison matrix.
+- Add a separate Import semantic model with embedded, portable synthetic CSV sources and a refresh-time relationship-key summary candidate.
+- Recompose supported scalar measures from summary states while retaining original selected measure chains for comparison.
+- Write separate detail/subtotal/total validation and A/B query files, explicit BLANK flags, fingerprints and a change manifest.
+- Withhold unsupported filter/drill/security/fact contexts; preserve source inputs and commit generated output only after successful staging.
+- Validate generated project/report connection documents against versioned Microsoft JSON schemas in CI. Desktop opening, refresh and actual DAX execution remain unverified.
+
 ## 0.5.0
 
 - Add explicit matrix contracts and common PBIR pivotTable projection extraction.

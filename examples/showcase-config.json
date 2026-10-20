@@ -1,0 +1,9 @@
+{
+  "seed": 42,
+  "fact_rows": 5000,
+  "dimension_rows": 12,
+  "tables": {
+    "Customer": {"rows": 12, "columns": {"Region": {"values": ["North", "South", "West"]}}},
+    "Calendar": {"rows": 24, "columns": {"Year": {"values": [2025]}, "Month": {"values": ["Jan", "Feb", "Mar"]}}}
+  }
+}

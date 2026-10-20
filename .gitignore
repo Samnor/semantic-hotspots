@@ -45,3 +45,7 @@ matrix-report/
 matrix-report-measured/
 smoke-matrices/
 smoke-matrix-lab/
+
+# Generated Power BI showcases
+powerbi-showcase/
+smoke-project/

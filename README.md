@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.5.0/semantic_hotspots-0.5.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.6.0/semantic_hotspots-0.6.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.5.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.6.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and DAX Studio; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -377,7 +377,7 @@ For a matrix grouped by region and month, the report distinguishes:
 
 The initial component analysis recognizes direct physical numeric `SUM`, `MIN`, `MAX`, `AVERAGE`, `COUNT`, physical-table `COUNTROWS`, physical-column `DISTINCTCOUNT`, simple numeric-column `SUMX`, scalar arithmetic and `DIVIDE` over supported components/referenced measures. It proposes SUM plus nonblank COUNT for averages; distinct keys are retained for recomputing DISTINCTCOUNT. Ratios/arithmetic are re-evaluated after state rollup, not summed or averaged from matrix cells. Missing/opaque formulas, VAR contexts, row-dependent calculations, multiple facts, unsupported filter paths, calculation groups/functions/dynamic formats and security gaps produce review blockers. Recognized leaf components and possible iteration/predicate keys can still guide manual review; they do not authorize a rewrite.
 
-Where no recognized static blocker remains, a **group-count probe** compares fact row count with the distinct retained-key combinations under base matrix filters. Counts and speedup remain unknown until executed; state-specific filters require separate counts. The library never substitutes a Cartesian product of dimension cardinalities for an observed grouping count. It creates no aggregation tables, SQL materializations, storage mappings, or rewritten measure chains. The coarser grain is a hypothesis for source/model/DAX-intermediate experiments, not a proven optimal grain.
+Where no recognized static blocker remains, a **group-count probe** compares fact row count with the distinct retained-key combinations under base matrix filters. Counts and speedup remain unknown until executed; state-specific filters require separate counts. The library never substitutes a Cartesian product of dimension cardinalities for an observed grouping count. Matrix analysis by itself creates no aggregation tables, SQL materializations, storage mappings, or rewritten measure chains. The coarser grain is a hypothesis for source/model/DAX-intermediate experiments, not a proven optimal grain. The separate `project` exporter below can create a new experimental model with a guarded summary candidate.
 
 ### Benchmark detail, subtotals and totals together
 
@@ -414,6 +414,44 @@ PBIR extraction reads common `pivotTable` Column/Measure projections from a `.Re
 
 The format follows Microsoft's [PBIR report definition](https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-report) and [matrix projection example](https://github.com/microsoft/skills-for-fabric/blob/main/skills/powerbi-report-cli/references/authoring/table.md). Exact visual-query validation remains a separate step; [Performance Analyzer](https://learn.microsoft.com/en-us/power-bi/create-reports/performance-analyzer) can capture the actual query and interactions.
 
+## Export a minimal Power BI showcase
+
+Create a **new project with one page and one matrix**, showing original and candidate measure values side by side:
+
+```powershell
+python -m semantic_hotspots project examples/matrix-model.bim --matrices examples/matrices.json --matrix monthly-margin --config examples/showcase-config.json -o powerbi-showcase
+```
+
+Copy the entire output folder to Windows, open `Showcase.pbip` in a current Power BI Desktop with PBIP/PBIR support, and refresh. Its new `Showcase.SemanticModel/model.bim` embeds compressed mock CSV data in Import partitions, so the showcase needs no real sources, credentials or machine-specific CSV path. A 32 MiB uncompressed embedded-data limit keeps this a small example; reduce simulation row counts if needed. The `simulation` subdirectory is an inspectable mock-data bundle; its separate file-based BIM is not the embedded-data Showcase model.
+
+The exporter selects the highest static-priority **eligible** matrix, or the exact ID supplied by `--matrix`. It keeps only the selected baseline measure chains, physical columns and necessary dimension paths in a metadata projection. It adds a DAX calculated summary table at the relationship-preserving key grain and candidate measures that recombine its states. The original measures remain intact in this isolated model. Ratios are recomputed from components; averages use sum/count states and distinct counts retain their keys. This is a refresh-time materialization with explicit candidate measures, not automatic aggregation mappings, source SQL preaggregation, or a guaranteed performance improvement. The extra summary consumes memory and refresh work.
+
+This initial exporter requires a complete, unfiltered matrix contract, default hierarchy/total settings, one supported fact recipe and unique regular dimension paths. It rejects fact-column axes/retained filters, measure filters, explicit column filters, non-default drill/total settings, unknown metadata, opaque/context-dependent calculations, multiple facts and security gaps. It does not silently drop these features or change their grain. These restrictions are narrower than matrix *analysis*: a matrix can be analyzed even when it cannot safely produce a showcase. Future slicers outside the declared dimension contract require new grain/equivalence review. Source files are never overwritten; the destination must be absent or empty.
+
+The showcase contains exactly **one visual**. A title/subtitle and paired value columns explain the comparison without adding cards, charts or duplicate pages. It uses a new PBIR layout, rather than reproducing all formatting/interactions of the original visual. `showcase.html`, `showcase.json`, and `OPEN-IN-DESKTOP.txt` describe the proposed change, summary grain, skipped matrices and limitations.
+
+### Validate before calling it improved
+
+After opening and refreshing the new model, connect DAX Studio to it:
+
+1. Run `queries/*-validation.dax`. Check every `Equal_*` flag is 1, BLANK flags match, and meaningful nonblank baseline values exist. Generated cases include hierarchy prefixes, subtotals and the grand total. Add empty selections, boundary cases, duplicates and representative slicers before broader claims.
+2. Run `queries/row-counts.dax` for engine counts. CSV generation and table expressions do not establish actual engine scans or row reduction.
+3. Only after correctness checks, time the separate `*-baseline.dax` and `*-candidate.dax` queries under matching data/hardware/cache conditions. The combined comparison visual executes both paths, so its duration cannot establish the candidate's speedup.
+
+These project query files are a **manual validation/A/B workflow**. The existing `experiment-run` command accepts the earlier query-scoped rewrite experiment format, not `showcase.json`. Floating-point regrouping may change results; exact comparisons fail conservatively. Finite synthetic cases do not prove production behavior, RLS equivalence, or universal correctness.
+
+```python
+from semantic_hotspots import export_project
+
+result = export_project(
+    "examples/matrix-model.bim", "examples/matrices.json", "powerbi-showcase",
+    matrix_id="monthly-margin", config={"fact_rows": 5000, "dimension_rows": 12},
+)
+print(result.project_path)
+```
+
+The exporter writes the documented [PBIP report structure](https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-report) and [BIM semantic model structure](https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-dataset), using a [calculated table](https://learn.microsoft.com/en-us/analysis-services/tabular-models/create-a-calculated-table-ssas-tabular) and [embedded compressed data](https://learn.microsoft.com/en-us/powerquery-m/binary-decompress). CI checks eight project/report/connection documents against Microsoft's versioned schemas (`tools/check_project_schemas.py`, development-only `jsonschema` dependency). Schema validation does not validate BIM semantics, Desktop loading, refresh, visual rendering or DAX results. No real Desktop/engine execution is performed by local or CI tests. PBIX saving requires Power BI Desktop; this library exports PBIP and does not publish or deploy it.
+
 ## Rule references
 
 The rule text was checked against these primary sources. Examples and advice are paraphrased; no page content is bundled.
@@ -425,7 +463,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.5.0.
+MIT licensed. Version 0.6.0.
 
 ## Contributing and data handling
 

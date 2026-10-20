@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install build
+      - run: python -m pip install build jsonschema
       - run: python tools/build_release.py
       - shell: bash
         run: python -m pip install --no-deps dist/*.whl
@@ -25,3 +25,5 @@ jobs:
       - run: python -m semantic_hotspots experiment smoke-rewrite-lab -o smoke-rewrites
       - run: python -m semantic_hotspots matrices examples/matrix-model.bim --matrices examples/matrices.json -o smoke-matrices
       - run: python -m semantic_hotspots simulate examples/matrix-model.bim --matrices examples/matrices.json --fact-rows 1000 --dimension-rows 50 -o smoke-matrix-lab
+      - run: python -m semantic_hotspots project examples/matrix-model.bim --matrices examples/matrices.json --matrix monthly-margin --config examples/showcase-config.json -o smoke-project
+      - run: python tools/check_project_schemas.py smoke-project
