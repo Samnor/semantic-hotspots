@@ -2,7 +2,7 @@
 
 An offline Python library and command-line tool for exploring Power BI semantic-model measure chains and prioritizing performance investigations.
 
-**Pure Python, Python 3.10+, no runtime dependencies.** The universal wheel installs on Windows without Rust, Visual Studio, .NET, Power BI Desktop, or a compiler. Parsing, static analysis, reports and mock-data generation run locally without a cloud account or API key. The explicit benchmark command invokes a separately installed DAX Studio against an engine endpoint you choose; model deployment is not automatic.
+**Pure Python, Python 3.10+, no runtime dependencies.** The universal wheel installs on Windows without Rust, Visual Studio, .NET, Power BI Desktop, or a compiler. Parsing, static analysis, reports and mock-data generation run locally without a cloud account or API key. An optional Windows `[engine]` extra connects directly to a local Power BI/Analysis Services engine through Microsoft ADOMD and Python.NET. DAX Studio is optional; model deployment is not automatic.
 
 ## Install in a virtual environment
 
@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.6.0/semantic_hotspots-0.6.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.7.0/semantic_hotspots-0.7.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,10 +19,10 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.6.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.7.0"
 ```
 
-To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and DAX Studio; parsing, analysis, reports, and mock-data generation run locally without them.
+To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
 
 ## Analyze a semantic model
 
@@ -226,11 +226,39 @@ Column options: `type`, `values`, `distinct`, `min`, `max`, `start`, `end`, `nul
 
 Choose fact row counts, distinct dimension keys, category distributions, date windows, and representative grouping/filter scenarios. Exact category labels matter: generic categories can make literal comparisons and measure branches return BLANK. Columns participating in virtual joins or correlated date ranges need compatible settings. The generator does not infer business rules or real data distributions. Test both detail cells and totals.
 
-### Run real engine benchmarks on Windows
+### Direct engine access on Windows, without DAX Studio
+
+Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
+
+```powershell
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.7.0/semantic_hotspots-0.7.0-py3-none-any.whl"
+python -m semantic_hotspots engine-sessions
+python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
+python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
+```
+
+Open and refresh the intended synthetic model first. `engine-sessions` lists local Desktop endpoints and their catalog names; select both explicitly. Discovery uses best-effort workspace paths that can change or contain stale entries. `engine-sessions --server localhost:PORT` probes an explicit local endpoint when discovery is unavailable. The library does not identify a model by its open window title or attest that the selected database has the intended data.
+
+The direct backend is a thin client using [Microsoft ADOMD.NET](https://learn.microsoft.com/analysis-services/client-libraries) through [Python.NET](https://pythonnet.github.io/pythonnet/python.html). It uses the actual loaded DAX engine. It is **not an emulator**, and does not need a DAX Studio installation. Python.NET installs via pip; Microsoft's DLL is not bundled or downloaded. The normal Desktop installation's `bin` directory is searched. If needed, pass `--adomd-path` to an installed, trusted `Microsoft.AnalysisServices.AdomdClient.dll` or its directory. Microsoft Store installations may require an explicit accessible client DLL. The default runtime is .NET Framework (`netfx`); a .NET Core client DLL needs an installed compatible .NET runtime and `--dotnet-runtime coreclr`. Match client/Python architecture and runtime; copying a DLL without its dependencies may not work.
+
+ADOMD currently supports **local loopback endpoints and warm iterations only**. Each workload runs in an isolated Python subprocess with a wall-clock timeout, so a blocked .NET call cannot hang the parent indefinitely. One connection is reused for that workload's iterations. Timings start after connection setup and include execution, result transfer, and complete client reading/conversion. Warm means no cache clearing, including the first iteration; it does not guarantee a prewarmed cache. CPU, FE and SE remain unknown, even if a collected CSV is read with `--trace-verified`. These are observed client elapsed times, not server-only timings, production predictions, or CU estimates. The backend does not refresh/deploy/edit the model or clear its cache.
+
+For a generated showcase's validation and row-count queries, export a single result set directly:
+
+```powershell
+python -m semantic_hotspots query powerbi-showcase/queries/QUERY-validation.dax --server localhost:PORT --database DATABASE -o validation.csv
+python -m semantic_hotspots query powerbi-showcase/queries/row-counts.dax --server localhost:PORT --database DATABASE -o row-counts.csv
+```
+
+Replace `QUERY-validation.dax` with an actual generated filename. Existing output files are never overwritten. Inspect all equality/BLANK flags and meaningful nonblank values; a successful query alone is not a correctness verdict. Showcase A/B timing remains a separate manual workflow; `experiment-run` accepts rewrite experiments, not `showcase.json`.
+
+The core remains dependency-free. Client orchestration and error/evidence handling have automated tests; Windows CI additionally loads the official ADOMD library and checks real .NET value serialization. A live Power BI Desktop engine connection, model refresh and DAX performance still require integration validation on Windows. Static analysis and mock generation do not reproduce VertiPaq/Formula Engine execution or DirectQuery source behavior.
+
+### Optional DAX Studio tracing and cold-cache benchmarks
 
 1. Copy the bundle to the engine machine and set the `SyntheticDataRoot` M expression in `synthetic-model.bim` to its absolute `tables` directory. You can instead specify `--data-root` during generation. The path must be readable by the engine process, which may run as a different account.
 2. Open/deploy the BIM through Tabular Editor or a compatible SSAS Tabular development environment into a **separate simulation model**; process/refresh its tables. Power BI Desktop does not directly open a standalone BIM. The library does not deploy or overwrite models automatically.
-3. Connect DAX Studio to that loaded model. Run the query files interactively, or install DAX Studio **3.6+**, which supplies `dscmd.exe benchmark`, and run:
+3. For server trace diagnostics or cold-cache tests, optionally install DAX Studio **3.6+**, which supplies `dscmd.exe benchmark`, and run:
 
 ```powershell
 py -m semantic_hotspots benchmark synthetic-lab --dscmd "C:\Program Files\DAX Studio\dscmd.exe" --server localhost:PORT --database Synthetic_DATABASE_NAME --warm 3 --cold 0
@@ -306,7 +334,7 @@ python -m semantic_hotspots experiment-run rewrite-experiment --dscmd "C:\Progra
 
 The runner defines a unique **query-scoped alias measure**, leaving the loaded model unchanged. Each candidate changes only the root expression; its original dependencies remain intact. It checks a paired query using engine strict equality (`==`) plus explicit original/candidate `ISBLANK` flags for the scalar total and every configured grouped/filtered scenario. The equality flag also retains groups in which both values are BLANK. A mismatch, failed process, missing output or zero validation rows prevents timing that candidate. All-BLANK coverage is labeled uninformative and also prevents timing.
 
-Passing candidates receive separate original/candidate DAX Studio benchmark queries on the same target, with alternating order between scenarios. The default clears no cache; `--cold` explicitly requests database-cache clearing. Keep the synthetic database, data, engine settings, hardware and concurrency stable. Warm results after paired validation may benefit from warmed engine caches. Repeat at several row counts, seeds, cardinalities and skews using separate simulation bundles.
+Passing candidates receive separate original/candidate queries on the same target, with alternating order between scenarios. Omit `--dscmd` to use the direct local ADOMD client. The default clears no cache; `--cold` explicitly requests database-cache clearing. Keep the synthetic database, data, engine settings, hardware and concurrency stable. Warm results after paired validation may benefit from warmed engine caches. Repeat at several row counts, seeds, cardinalities and skews using separate simulation bundles.
 
 Open `rewrite-experiment/experiment-results/experiment.html`. It ranks the highest **observed baseline mean query duration** first, with correctness and performance status separated. Click into each alternative for before/after DAX, logical plans/dependencies, scenario-specific original/candidate means, cache phases, iteration counts, percent reduction and exact query fingerprints. Mixed improvements/regressions are labeled `mixed_results`; incomplete timing stays unknown. No significance threshold or noise model is implied by `observed_improvement`. Among candidates with tested-case equality and no observed scenario regression, `selected_for_review` marks the lowest sum of equally weighted scenario/cache mean durations for that measure; this is a fixture-specific choice, not a production workload weighting.
 
@@ -463,7 +491,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.6.0.
+MIT licensed. Version 0.7.0.
 
 ## Contributing and data handling
 

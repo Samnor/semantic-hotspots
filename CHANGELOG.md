@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+
+- Make DAX Studio optional: benchmark and guarded rewrite runners default to a direct local Windows ADOMD client when no dscmd path is supplied.
+- Add the optional pip engine extra using Python.NET, best-effort Desktop endpoint/catalog discovery, and single-result DAX-to-CSV execution.
+- Isolate .NET work in timed subprocesses and commit complete CSV outputs without overwriting existing results.
+- Label client elapsed timings explicitly; never promote them to CPU/FE/SE traces. Direct mode does not clear caches or deploy/refresh models.
+- Retain the dscmd backend for tracing and explicit cold-cache tests. Add fictional client/evidence regressions and Windows client-load/serialization CI; live Desktop/DAX integration remains unverified.
+
 ## 0.6.0
 
 - Export a new PBIP project containing exactly one page and one baseline/candidate comparison matrix.

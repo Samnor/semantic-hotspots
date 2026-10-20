@@ -15,6 +15,7 @@ from .benchmark import collect_benchmarks, run_benchmarks
 from .experiments import prepare_rewrite_experiment, collect_rewrite_results, run_rewrite_experiment
 from .matrices import analyze_matrices, load_matrices
 from .project import export_project
+from .engine import desktop_sessions, query_to_csv
 
 
 def _positive(value: str) -> int:
@@ -22,6 +23,17 @@ def _positive(value: str) -> int:
     if parsed <= 0:
         raise argparse.ArgumentTypeError('must be positive')
     return parsed
+
+
+def _client_options(parser):
+    parser.add_argument('--engine', choices=['auto', 'adomd', 'dscmd'], default='auto',
+                        help='Default: direct ADOMD unless --dscmd is supplied')
+    parser.add_argument('--adomd-path', type=Path, help='Installed Microsoft ADOMD client DLL or directory')
+    parser.add_argument('--dotnet-runtime', choices=['netfx', 'coreclr'], default='netfx')
+
+
+def _engine_options(args):
+    return dict(engine=args.engine, adomd_path=args.adomd_path, dotnet_runtime=args.dotnet_runtime)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -55,9 +67,10 @@ def main(argv: list[str] | None = None) -> int:
     mock.add_argument('--fact-rows', type=_positive)
     mock.add_argument('--dimension-rows', type=_positive)
     mock.add_argument('--data-root', help='Absolute CSV tables path on the engine machine')
-    bench = commands.add_parser('benchmark', help='Run dscmd 3.6+ on an already loaded synthetic model, or collect existing CSV results')
+    bench = commands.add_parser('benchmark', help='Query an already loaded synthetic model through ADOMD or optional dscmd')
     bench.add_argument('bundle', type=Path)
     bench.add_argument('--dscmd', type=Path)
+    _client_options(bench)
     bench.add_argument('--server')
     bench.add_argument('--database')
     bench.add_argument('--results', type=Path)
@@ -73,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     run = commands.add_parser('experiment-run', help='Validate rewrite results in an engine before timing, or collect retained results')
     run.add_argument('experiment', type=Path)
     run.add_argument('--dscmd', type=Path)
+    _client_options(run)
     run.add_argument('--server')
     run.add_argument('--database')
     run.add_argument('--results', type=Path)
@@ -81,6 +95,19 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument('--timeout', type=_positive, default=300)
     run.add_argument('--collect-only', action='store_true')
     run.add_argument('--trace-verified', action='store_true')
+    sessions = commands.add_parser('engine-sessions', help='Find local Desktop endpoints and list their databases through ADOMD (Windows)')
+    sessions.add_argument('--server', help='Probe an explicit local endpoint instead of workspace files')
+    sessions.add_argument('--adomd-path', type=Path)
+    sessions.add_argument('--dotnet-runtime', choices=['netfx', 'coreclr'], default='netfx')
+    sessions.add_argument('--timeout', type=_positive, default=30)
+    query = commands.add_parser('query', help='Run one local DAX query through ADOMD and save its result CSV (Windows)')
+    query.add_argument('file', type=Path)
+    query.add_argument('--server', required=True)
+    query.add_argument('--database', required=True)
+    query.add_argument('--adomd-path', type=Path)
+    query.add_argument('--dotnet-runtime', choices=['netfx', 'coreclr'], default='netfx')
+    query.add_argument('--timeout', type=_positive, default=300)
+    query.add_argument('-o', '--output', type=Path, required=True)
     matrix = commands.add_parser('matrices', help='Analyze matrix hierarchies, dependencies and candidate aggregation grains')
     matrix.add_argument('model', type=Path)
     matrix.add_argument('--matrices', type=Path, required=True, help='Explicit matrix-spec JSON or common PBIR .Report/definition folder')
@@ -96,6 +123,18 @@ def main(argv: list[str] | None = None) -> int:
     project.add_argument('-o', '--output', type=Path, default=Path('powerbi-showcase'))
     args = parser.parse_args(argv)
     try:
+        if args.command == 'engine-sessions':
+            result = desktop_sessions(server=args.server, adomd_path=args.adomd_path,
+                                      dotnet_runtime=args.dotnet_runtime, timeout=args.timeout)
+            print(json.dumps(result, ensure_ascii=True, indent=2))
+            if not result:
+                print('No Desktop workspace endpoints found. Open a model or supply --server localhost:PORT.', file=sys.stderr)
+            return 0 if result and all(not r['error'] for r in result) else 1
+        if args.command == 'query':
+            output = query_to_csv(args.file, args.output, server=args.server, database=args.database,
+                                  adomd_path=args.adomd_path, dotnet_runtime=args.dotnet_runtime, timeout=args.timeout)
+            print(f'Engine result CSV: {output}\nQuery executed; correctness depends on inspecting the returned values and validation flags.')
+            return 0
         if args.command == 'project':
             settings=json.loads(args.config.read_text(encoding='utf-8-sig')) if args.config else {}
             settings=SimulationConfig.from_dict(settings).__dict__.copy()
@@ -122,12 +161,12 @@ def main(argv: list[str] | None = None) -> int:
                 result = collect_rewrite_results(args.experiment, output, trace_verified=args.trace_verified)
                 result.write(output)
             else:
-                if not args.dscmd or not args.server or not args.database:
-                    raise ModelError('experiment-run needs --dscmd, --server and --database, or --collect-only')
+                if not args.server or not args.database:
+                    raise ModelError('experiment-run needs --server and --database, or --collect-only')
                 result = run_rewrite_experiment(args.experiment, dscmd=args.dscmd, server=args.server,
                                                 database=args.database, results_directory=output,
                                                 cold=args.cold, warm=args.warm, timeout=args.timeout,
-                                                trace_verified=args.trace_verified)
+                                                trace_verified=args.trace_verified, **_engine_options(args))
             print(f'Rewrite evidence: {(output / "experiment.html").resolve()}\nEquality is limited to tested cases; observed durations are not production predictions.')
             candidates = result.to_dict()['ranked_candidates']
             return 0 if candidates and all(c['validation_status'] == 'passed_tested_cases' and c['performance_status'] in {
@@ -150,14 +189,14 @@ def main(argv: list[str] | None = None) -> int:
                 result = collect_benchmarks(args.bundle, output, trace_verified=args.trace_verified)
                 result.write(output)
             else:
-                if not args.dscmd or not args.server or not args.database:
-                    raise ModelError('benchmark needs --dscmd, --server and --database, or --collect-only')
+                if not args.server or not args.database:
+                    raise ModelError('benchmark needs --server and --database, or --collect-only')
                 result = run_benchmarks(args.bundle, dscmd=args.dscmd, server=args.server, database=args.database,
                                         results_directory=output, cold=args.cold, warm=args.warm,
-                                        timeout=args.timeout, trace_verified=args.trace_verified)
+                                        timeout=args.timeout, trace_verified=args.trace_verified, **_engine_options(args))
             print(f'Benchmark HTML: {(output / "benchmark.html").resolve()}\nTimings are synthetic-workload durations, not production predictions or CU estimates.')
             failed = any(r['error'] for case in result.cases for r in case['rows'])
-            incomplete = any(not case['rows'] for case in result.cases) or any('expected ' in d or 'dscmd failed' in d for d in result.diagnostics)
+            incomplete = any(not case['rows'] for case in result.cases) or any('expected ' in d or 'failed or timed out' in d for d in result.diagnostics)
             return 1 if failed or incomplete else 0
         model = load_model(args.model)
         if args.command == 'analyze':

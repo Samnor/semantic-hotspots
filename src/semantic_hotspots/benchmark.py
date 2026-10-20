@@ -1,4 +1,4 @@
-"""Explicit DAX Studio engine benchmarks; never approximate DAX timing in Python."""
+"""Explicit engine benchmarks; never approximate DAX timing in Python."""
 from __future__ import annotations
 
 import csv
@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .model import ModelError
+from .engine import EngineRunner
 
 
 def _manifest(bundle):
@@ -55,7 +56,7 @@ def _number(value, name):
 
 
 def read_benchmark_csv(path, *, trace_verified=False):
-    """Read dscmd 3.6+ detail rows, excluding its appended summary section.
+    """Read dscmd detail rows or direct-client rows with an explicit timing source.
 
     Without independently verified server trace availability, FE/SE/CPU fields
     stay unknown: dscmd can write zero when it falls back to client wall timing.
@@ -87,12 +88,16 @@ def read_benchmark_csv(path, *, trace_verified=False):
         if cache not in {'cold', 'warm'}:
             raise ModelError('Benchmark Cache must be Cold or Warm')
         error = row.get('Error') or None
+        source = row.get('TimingSource', '')
+        if source not in {'', 'client_elapsed'}:
+            raise ModelError('Unknown benchmark TimingSource')
+        client_elapsed = source == 'client_elapsed'
         result = {'sequence': sequence, 'cache': cache, 'error': error,
                   'duration_ms': None if error else _number(row['TotalDuration_ms'], 'duration'),
-                  'timing_source': 'server trace (user verified)' if trace_verified else 'server trace or client wall clock; unverified',
+                  'timing_source': 'client elapsed (execution and result reading; no server trace)' if client_elapsed else 'server trace (user verified)' if trace_verified else 'server trace or client wall clock; unverified',
                   'cpu_ms': None, 'formula_engine_ms': None, 'storage_engine_ms': None,
                   'rows': None if error or row.get('RowCount') in {None, ''} else _number(row['RowCount'], 'RowCount')}
-        if trace_verified and not error:
+        if trace_verified and not error and not client_elapsed:
             for target, source in [('cpu_ms', 'TotalCpu_ms'), ('formula_engine_ms', 'FormulaEngineDuration_ms'), ('storage_engine_ms', 'StorageEngineDuration_ms')]:
                 if row.get(source) not in {None, ''}:
                     result[target] = _number(row[source], source)
@@ -159,7 +164,8 @@ def collect_benchmarks(bundle, results_directory, *, trace_verified=False) -> Be
             capture = json.loads(runner_file.read_text(encoding='utf-8'))
             for run in capture['runs']:
                 if run['returncode'] != 0:
-                    diagnostics.append(f'Workload {run["id"]}: dscmd failed or timed out; see runner.json. Any successful iterations are only a partial result.')
+                    label = 'ADOMD worker' if capture.get('engine') == 'adomd' else 'dscmd'
+                    diagnostics.append(f'Workload {run["id"]}: {label} failed or timed out; see runner.json. Any successful iterations are only a partial result.')
             for case in cases:
                 for cache in ['cold', 'warm']:
                     expected = capture[cache]
@@ -172,13 +178,16 @@ def collect_benchmarks(bundle, results_directory, *, trace_verified=False) -> Be
             raise ModelError('Malformed runner.json iteration coverage metadata') from exc
     if not trace_verified:
         diagnostics.append('Server trace availability was not verified. CPU/FE/SE are unknown; duration may use client wall-clock fallback. Zero trace fields are not assumed to be measured zeros.')
+    if any(r['timing_source'].startswith('client elapsed') for c in cases for r in c['rows']):
+        diagnostics.append('ADOMD durations include execution, result transfer and client reading/conversion; connection setup is excluded. Warm means no cache clearing, not a guaranteed prewarmed cache. CPU/FE/SE are not measured, even with --trace-verified.')
     diagnostics += manifest['warnings']
     return BenchmarkResults(manifest, cases, diagnostics, trace_verified, bundle_root)
 
 
-def run_benchmarks(bundle, *, dscmd, server, database, results_directory=None,
+def run_benchmarks(bundle, *, server, database, dscmd=None, engine='auto',
+                   adomd_path=None, dotnet_runtime='netfx', results_directory=None,
                    cold=0, warm=3, timeout=300, trace_verified=False) -> BenchmarkResults:
-    """Run a user-selected dscmd 3.6+ against an already loaded synthetic model.
+    """Query a loaded synthetic model using ADOMD, or an explicit dscmd path.
 
     No model deployment or refresh occurs. Explicit cold>0 asks dscmd to clear the
     database cache. Use a separate simulation database. Commands use argv, no shell.
@@ -191,11 +200,9 @@ def run_benchmarks(bundle, *, dscmd, server, database, results_directory=None,
         raise ModelError('At least one cold or warm iteration is required')
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
         raise ModelError('timeout must be finite and positive')
-    if not server or not database:
-        raise ModelError('Provide an explicit server and database for the already loaded synthetic model')
-    executable = Path(dscmd).resolve()
-    if not executable.is_file():
-        raise ModelError('dscmd must be a path to an installed DAX Studio dscmd.exe 3.6+')
+    runner = EngineRunner(server=server, database=database, engine=engine, dscmd=dscmd,
+                          adomd_path=adomd_path, dotnet_runtime=dotnet_runtime,
+                          cold=cold, trace_verified=trace_verified)
     out = Path(results_directory).resolve() if results_directory is not None else root/'benchmark-results'
     if out.exists() and (not out.is_dir() or any(out.iterdir())):
         raise ModelError('Benchmark results directory must be absent or empty')
@@ -203,9 +210,8 @@ def run_benchmarks(bundle, *, dscmd, server, database, results_directory=None,
     runs = []
     for w in manifest['workloads']:
         result_file = out/('result-' + w['id'] + '.csv')
-        command = [str(executable), 'benchmark', str(result_file), '--server', str(server),
-                   '--database', str(database), '--file', str(root/w['query_file']),
-                   '--cold', str(cold), '--warm', str(warm)]
+        command = runner.command('benchmark', result_file, root/w['query_file'],
+                                 cold=cold, warm=warm, timeout=timeout)
         try:
             completed = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, check=False)
             run = {'id': w['id'], 'returncode': completed.returncode,
@@ -215,7 +221,7 @@ def run_benchmarks(bundle, *, dscmd, server, database, results_directory=None,
         except OSError as exc:
             run = {'id': w['id'], 'returncode': None, 'stdout': '', 'stderr': str(exc)}
         runs.append(run)
-    (out/'runner.json').write_text(json.dumps({'server': str(server), 'database': str(database),
+    (out/'runner.json').write_text(json.dumps({'engine': runner.engine, 'server': runner.server, 'database': str(database),
                                              'cold': cold, 'warm': warm, 'timeout': timeout, 'runs': runs}, indent=2)+'\n', encoding='utf-8')
     result = collect_benchmarks(root, out, trace_verified=trace_verified)
     result.write(out)
@@ -251,13 +257,13 @@ def render_benchmark_html(result, source_link=None):
     rows = ''.join(f'<tr><td>{i}</td><td><a href="#case-{case["id"]}">{esc(case["measure"])}</a><small>{esc(case["scenario"])}</small></td><td>{cache}</td><td>{_number(stats["mean_ms"], "ms")}</td><td>{_number(stats["p95_ms"], "ms")}</td><td>{stats["successes"]}/{stats["attempts"]}</td></tr>' for i, (case, cache, stats) in enumerate(ranking, 1))
     details = []
     for case in result.cases:
-        attempts = ''.join(f'<tr><td>{r["sequence"]}</td><td>{r["cache"]}</td><td>{_number(r["duration_ms"], "ms")}</td><td>{_number(r["cpu_ms"], "ms")}</td><td>{_number(r["rows"])}</td><td>{esc(r["error"] or "Success")}</td></tr>' for r in case['rows'])
+        attempts = ''.join(f'<tr><td>{r["sequence"]}</td><td>{r["cache"]}</td><td>{_number(r["duration_ms"], "ms")}</td><td>{_number(r["cpu_ms"], "ms")}</td><td>{_number(r["rows"])}</td><td>{esc(r["timing_source"])}</td><td>{esc(r["error"] or "Success")}</td></tr>' for r in case['rows'])
         chain_link = f'<p><a href="{esc(source_link)}#{_anchor("measure-", case["measure_id"])}">Inspect static findings, DAX and dependency chain</a></p>' if source_link else ''
         if source_link and case.get('matrix_id'):
             matrix_link = source_link.replace('analysis/report.html', 'matrix-analysis/report.html')
             chain_link = f'<p><a href="{esc(matrix_link)}#{_anchor("matrix-", case["matrix_id"])}">Inspect matrix context, measure chains and grain advice</a></p>'
 
-        details.append(f'<details id="case-{case["id"]}"><summary>{esc(case["measure"])} · {esc(case["scenario"])}</summary><p>Groups: {esc(case["group_by"])} · Filters: {esc(case["filters"])}</p>{chain_link}<details><summary>DAX workload</summary><pre>{esc(case["query"])}</pre></details><details><summary>Individual iterations</summary><table><thead><tr><th>Run</th><th>Cache</th><th>Duration</th><th>CPU (verified trace only)</th><th>Rows returned</th><th>Outcome</th></tr></thead><tbody>{attempts}</tbody></table></details></details>')
+        details.append(f'<details id="case-{case["id"]}"><summary>{esc(case["measure"])} · {esc(case["scenario"])}</summary><p>Groups: {esc(case["group_by"])} · Filters: {esc(case["filters"])}</p>{chain_link}<details><summary>DAX workload</summary><pre>{esc(case["query"])}</pre></details><details><summary>Individual iterations</summary><table><thead><tr><th>Run</th><th>Cache</th><th>Duration</th><th>CPU (verified trace only)</th><th>Rows returned</th><th>Timing source</th><th>Outcome</th></tr></thead><tbody>{attempts}</tbody></table></details></details>')
     warnings = ''.join(f'<li>{esc(w)}</li>' for w in result.diagnostics)
     count = sum(len(c['rows']) for c in result.cases)
     failures = sum(bool(r['error']) for c in result.cases for r in c['rows'])

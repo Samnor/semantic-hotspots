@@ -559,9 +559,9 @@ def simulate(source: Model | str | Path | dict, directory: str | Path, *,
         '1. Copy this whole directory to Windows. No real source connection is needed.\n'
         '2. Edit model.expressions[SyntheticDataRoot].expression in synthetic-model.bim to the absolute tables directory on the engine machine (M quoted string).\n'
         '3. Open the BIM in Tabular Editor or deploy it to a separate local SSAS Tabular database. Refresh/process the synthetic Import tables. Do not replace your production model. Deployment and processing are not performed by this library.\n'
-        '4. Use DAX Studio to connect to that loaded model. Run queries/*.dax with Server Timings or use dscmd.exe 3.6+ via the library benchmark command.\n'
-        '5. Example (replace endpoint, database and executable path):\n'
-        '   py -m semantic_hotspots benchmark . --dscmd "C:\\Program Files\\DAX Studio\\dscmd.exe" --server localhost:PORT --database '+name+' --warm 3 --cold 0\n'
+        '4. Install the optional [engine] extra for direct Windows ADOMD access. See README for the release-wheel install command. DAX Studio is optional. The Microsoft ADOMD DLL must be installed separately (commonly with Desktop).\n'
+        '5. Use engine-sessions to list open Desktop endpoints/databases, then select the intended synthetic model explicitly. Example:\n'
+        '   py -m semantic_hotspots benchmark . --server localhost:PORT --database '+name+' --warm 3 --cold 0\n'
         '6. Read benchmark.html. Compare identical data, workloads, hardware and cache settings before/after a DAX change.\n\n'
         'CSV generation is not a DAX benchmark. Import results do not reproduce DirectQuery network/source latency or Fabric capacity accounting. Scalar totals alone may be BLANK; configure representative group_by and filters.\n', encoding='utf-8')
     return SimulationBundle(root, manifest)

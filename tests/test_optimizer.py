@@ -210,6 +210,32 @@ class RewriteExperimentTests(unittest.TestCase):
         self.execute(self.fake_runner())
         self.assertEqual(before, self.bundle.model_path.read_bytes())
 
+    def test_direct_client_preserves_validation_gate_and_fingerprinted_evidence(self):
+        for mismatch in [False, True]:
+            calls = []
+            fake = self.fake_runner(mismatch=mismatch)
+            def direct(argv, **kwargs):
+                self.assertEqual(argv[2], 'semantic_hotspots._adomd_worker')
+                operation = argv[3]
+                output = Path(argv[argv.index('--output')+1])
+                translated = ['client', operation, str(output)] + argv[argv.index('--server'):]
+                calls.append(operation)
+                result = fake(translated, **kwargs)
+                if operation == 'benchmark':
+                    with output.open(newline='', encoding='utf-8') as stream:
+                        records = list(csv.reader(stream))
+                    with output.open('w', newline='', encoding='utf-8') as stream:
+                        csv.writer(stream).writerows([records[0]+['TimingSource']] + [r+['client_elapsed'] for r in records[1:]])
+                return result
+            with patch('semantic_hotspots.experiments.subprocess.run', side_effect=direct):
+                result = run_rewrite_experiment(self.directory, server='localhost:123', database='Synthetic',
+                                                results_directory=self.root/('direct-fail' if mismatch else 'direct-pass'), warm=1)
+            status = result.to_dict()['ranked_candidates'][0]
+            self.assertEqual(status['validation_status'], 'failed' if mismatch else 'passed_tested_cases')
+            self.assertEqual('benchmark' in calls, not mismatch)
+            if not mismatch:
+                self.assertTrue(all(r['timing_source'].startswith('client elapsed') for c in result.cases for rows in c['benchmark_rows'].values() for r in rows))
+
     def test_validated_winner_retains_evidence_and_all_cache_phases(self):
         result, mock = self.execute(self.fake_runner(), cold=2, warm=3)
         data = result.to_dict()['ranked_candidates'][0]

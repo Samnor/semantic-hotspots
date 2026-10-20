@@ -302,6 +302,8 @@ def collect_rewrite_results(directory, results_directory, *, trace_verified=Fals
     if runner is not None:
         if not isinstance(runner, dict):
             raise ModelError('Malformed runner metadata')
+        if runner.get('engine') == 'adomd':
+            diagnostics.append('Direct ADOMD client elapsed timings include execution, transfer and complete result reading/conversion, excluding connection setup. CPU/FE/SE are unmeasured. Warm means no cache clearing; the first iteration can encounter cold caches. Worker startup and connection setup occur again for each validation or timing workload.')
         if runner.get('experiment_sha256') != _hash(json.dumps(manifest, sort_keys=True, ensure_ascii=False)):
             raise ModelError('Runner capture belongs to a different experiment')
         expected = {k: runner.get(k) for k in ['cold', 'warm']}
@@ -360,7 +362,8 @@ def collect_rewrite_results(directory, results_directory, *, trace_verified=Fals
     return RewriteResults(manifest, cases, diagnostics)
 
 
-def run_rewrite_experiment(directory, *, dscmd, server, database, results_directory=None,
+def run_rewrite_experiment(directory, *, server, database, dscmd=None, engine='auto',
+                           adomd_path=None, dotnet_runtime='netfx', results_directory=None,
                            cold=0, warm=3, timeout=300, trace_verified=False):
     """Validate first, then benchmark paired alternatives if every case matches.
 
@@ -368,23 +371,22 @@ def run_rewrite_experiment(directory, *, dscmd, server, database, results_direct
     deployment. Cold>0 explicitly requests clearing the selected database cache.
     """
     root, manifest = _experiment(directory)
-    executable = Path(dscmd).resolve()
-    if not executable.is_file() or not server or not database:
-        raise ModelError('Provide an installed dscmd executable and explicit server/database')
+    from .engine import EngineRunner
+    runner = EngineRunner(server=server, database=database, engine=engine, dscmd=dscmd,
+                          adomd_path=adomd_path, dotnet_runtime=dotnet_runtime,
+                          cold=cold, trace_verified=trace_verified)
     if any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in [cold, warm]) or not cold+warm:
         raise ModelError('cold/warm must be nonnegative integers with at least one iteration')
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
         raise ModelError('timeout must be finite and positive')
     out = _fresh(results_directory or root/'experiment-results')
     capture = {'experiment_sha256': _hash(json.dumps(manifest, sort_keys=True, ensure_ascii=False)),
-               'server': str(server), 'database': str(database), 'cold': cold, 'warm': warm,
+               'engine': runner.engine, 'server': runner.server, 'database': str(database), 'cold': cold, 'warm': warm,
                'timeout': timeout, 'runs': []}
     def run(case, kind):
         output = out/f'{case["id"]}-{kind}.csv'
-        command = [str(executable), 'csv' if kind == 'validation' else 'benchmark', str(output),
-                   '--server', str(server), '--database', str(database), '--file', str(root/case['queries'][kind]['file'])]
-        if kind != 'validation':
-            command += ['--cold', str(cold), '--warm', str(warm)]
+        command = runner.command('csv' if kind == 'validation' else 'benchmark', output,
+                                 root/case['queries'][kind]['file'], cold=cold, warm=warm, timeout=timeout)
         try:
             process = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, check=False)
             result = {'returncode': process.returncode, 'stdout': process.stdout, 'stderr': process.stderr}

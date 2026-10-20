@@ -14,10 +14,11 @@ __all__ = ['Analysis', 'CycleError', 'DependencyGraph', 'Entity', 'Model', 'Mode
            'LogicalNode', 'RewritePlan', 'plan_rewrites', 'RewriteResults',
            'prepare_rewrite_experiment', 'collect_rewrite_results', 'run_rewrite_experiment',
            'MatrixSpec', 'MatrixAnalysis', 'load_matrices', 'analyze_matrices',
-           'ProjectExport', 'export_project']
+           'ProjectExport', 'export_project', 'discover_desktop_ports', 'desktop_sessions', 'query_to_csv']
 
 from .optimizer import LogicalNode, RewritePlan, plan_rewrites
 from .experiments import RewriteResults, prepare_rewrite_experiment, collect_rewrite_results, run_rewrite_experiment
 
 from .matrices import MatrixSpec, MatrixAnalysis, load_matrices, analyze_matrices
 from .project import ProjectExport, export_project
+from .engine import discover_desktop_ports, desktop_sessions, query_to_csv
