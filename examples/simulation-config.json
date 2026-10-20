@@ -1,0 +1,27 @@
+{
+  "seed": 42,
+  "fact_rows": 10000,
+  "dimension_rows": 100,
+  "data_root": "C:\\semantic-hotspots\\mock\\tables",
+  "tables": {
+    "Sales": {
+      "rows": 25000,
+      "columns": {
+        "CustomerKey": {"skew": 0.8, "null_fraction": 0.01},
+        "Date": {"start": "2024-01-01", "end": "2026-12-31", "distinct": 1096},
+        "Amount": {"min": 0, "max": 10000, "distinct": 1000, "null_fraction": 0.02}
+      }
+    },
+    "Customer": {
+      "rows": 250,
+      "columns": {
+        "Region": {"values": ["North", "South", "East", "West"], "skew": 0.5}
+      }
+    }
+  },
+  "workloads": [
+    {"name": "by-region", "group_by": [["Customer", "Region"]]},
+    {"name": "north-only", "filters": [{"table": "Customer", "column": "Region", "values": ["North"]}]}
+  ],
+  "top": 20
+}

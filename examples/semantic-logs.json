@@ -1,0 +1,11 @@
+{
+  "purpose": "Fictional demonstration telemetry; not a measured benchmark",
+  "rows": [
+    {"ItemId": "demo-dataset", "OperationId": "demo-query-1", "OperationName": "QueryBegin", "Timestamp": "2026-01-01T12:00:00Z", "EventText": "EVALUATE ROW(\"calculation\",[Customer calculation],\"total\",[Revenue])"},
+    {"ItemId": "demo-dataset", "OperationId": "demo-query-1", "OperationName": "QueryEnd", "Timestamp": "2026-01-01T12:00:00.250Z"},
+    {"ItemId": "demo-dataset", "OperationId": "demo-query-1", "OperationName": "ExecutionMetrics", "Timestamp": "2026-01-01T12:00:00.250Z", "EventText": {"totalCpuTimeMs": 150, "durationMs": 250}},
+    {"ItemId": "demo-dataset", "OperationId": "demo-query-2", "OperationName": "QueryBegin", "Timestamp": "2026-01-01T12:00:01Z", "EventText": "EVALUATE ROW(\"total\",[Revenue])"},
+    {"ItemId": "demo-dataset", "OperationId": "demo-query-2", "OperationName": "QueryEnd", "Timestamp": "2026-01-01T12:00:01Z"},
+    {"ItemId": "demo-dataset", "OperationId": "demo-query-2", "OperationName": "ExecutionMetrics", "Timestamp": "2026-01-01T12:00:01Z", "EventText": {"totalCpuTimeMs": 0, "durationMs": 0}}
+  ]
+}

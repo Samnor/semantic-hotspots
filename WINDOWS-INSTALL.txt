@@ -1,0 +1,19 @@
+semantic-hotspots 0.3.1
+Requires Python 3.10 or later.
+
+Create a virtual environment:
+  python -m venv .venv
+
+Install the universal wheel:
+  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.3.1/semantic_hotspots-0.3.1-py3-none-any.whl"
+
+Check the installation:
+  .\.venv\Scripts\python.exe -m semantic_hotspots --version
+
+Try the fictional example from a source checkout:
+  .\.venv\Scripts\python.exe -m semantic_hotspots analyze examples\retail.bim -o reports\example
+  .\.venv\Scripts\python.exe -m semantic_hotspots simulate examples\retail.bim --config examples\simulation-config.json -o synthetic-lab
+
+Open the generated HTML reports. See README.md for supported inputs, Python API, simulation settings and engine benchmark setup.
+
+Parsing, analysis and generation have no runtime dependencies. Actual DAX benchmarks require a separately installed engine and DAX Studio 3.6+.

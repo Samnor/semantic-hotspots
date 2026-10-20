@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "semantic-hotspots"
+version = "0.3.1"
+description = "Offline Power BI semantic-model lineage, hotspot triage, and explainable diagnostics"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = []
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: OS Independent",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/Samnor/semantic-hotspots"
+Repository = "https://github.com/Samnor/semantic-hotspots"
+Issues = "https://github.com/Samnor/semantic-hotspots/issues"
+
+[project.scripts]
+semantic-hotspots = "semantic_hotspots.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+semantic_hotspots = ["py.typed"]

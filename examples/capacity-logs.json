@@ -1,0 +1,7 @@
+{
+  "purpose": "Fictional demonstration telemetry; missing query-2 cost deliberately remains unknown",
+  "rows": [
+    {"EventId": "demo-fragment-1", "ItemId": "demo-dataset", "OperationId": "demo-query-1", "OperationName": "Query", "CUSeconds": 1.6},
+    {"EventId": "demo-fragment-2", "ItemId": "demo-dataset", "OperationId": "demo-query-1", "OperationName": "Query", "CUSeconds": 0.8}
+  ]
+}

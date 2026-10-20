@@ -1,0 +1,25 @@
+{
+  "name": "Retail example",
+  "model": {
+    "tables": [
+      {
+        "name": "Sales",
+        "columns": [{"name": "CustomerKey", "dataType": "int64"}, {"name": "Date", "dataType": "dateTime"}, {"name": "Amount", "dataType": "double"}],
+        "partitions": [{"name": "Sales", "mode": "directQuery"}],
+        "measures": [
+          {"name": "Revenue", "expression": "SUM(Sales[Amount])"},
+          {"name": "Revenue twice", "expression": "[Revenue] + [Revenue]"},
+          {"name": "Customer calculation", "expression": "SUMX(VALUES(Customer[Key]), CALCULATE([Revenue twice]))"},
+          {"name": "Visible revenue", "expression": "CALCULATE([Revenue], FILTER(Customer, [Revenue] > 0))"},
+          {"name": "Display revenue", "expression": "FORMAT([Customer calculation], \"#,##0.00\")"}
+        ]
+      },
+      {
+        "name": "Customer",
+        "columns": [{"name": "Key", "dataType": "int64"}, {"name": "Region", "dataType": "string"}],
+        "partitions": [{"name": "Customer", "mode": "import"}]
+      }
+    ],
+    "relationships": [{"name": "SalesCustomer", "fromTable": "Sales", "fromColumn": "CustomerKey", "toTable": "Customer", "toColumn": "Key", "crossFilteringBehavior": "oneDirection", "isActive": true}]
+  }
+}

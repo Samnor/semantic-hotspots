@@ -1,0 +1,35 @@
+# Python and packaging
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv*/
+venv/
+.env
+.env.*
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+# Local models, telemetry, reports and experiments
+local-validation/
+private/
+local-data/
+exports/
+reports/
+semantic-hotspots-report/
+synthetic-lab/
+benchmark-results/
+smoke-report/
+smoke-simulation/
+RELEASE-VERIFICATION.json
+*.pbix
+*.pbit
+*.pbip
+*.SemanticModel/
+*.Report/
+# Operating system / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

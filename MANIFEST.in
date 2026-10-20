@@ -1,0 +1,6 @@
+include LICENSE README.md
+include CONTRIBUTING.md SECURITY.md CHANGELOG.md WINDOWS-INSTALL.txt
+recursive-include examples *.bim *.json
+recursive-include tests *.py
+recursive-include tools *.py
+include .github/workflows/test.yml
