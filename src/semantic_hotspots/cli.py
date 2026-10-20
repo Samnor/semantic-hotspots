@@ -12,6 +12,7 @@ from .parser import load_model
 from .profile import RuntimeProfile
 from .simulation import SimulationConfig, simulate
 from .benchmark import collect_benchmarks, run_benchmarks
+from .experiments import prepare_rewrite_experiment, collect_rewrite_results, run_rewrite_experiment
 
 
 def _positive(value: str) -> int:
@@ -62,8 +63,43 @@ def main(argv: list[str] | None = None) -> int:
     bench.add_argument('--timeout', type=_positive, default=300, help='Per-workload timeout in seconds')
     bench.add_argument('--collect-only', action='store_true', help='Read existing result CSVs without contacting an engine')
     bench.add_argument('--trace-verified', action='store_true', help='Assert server traces were independently verified; otherwise CPU/FE/SE stay unknown')
+    experiment = commands.add_parser('experiment', help='Prepare guarded rewrite candidates and paired validation/timing queries from a synthetic bundle')
+    experiment.add_argument('bundle', type=Path)
+    experiment.add_argument('-o', '--output', type=Path, default=Path('rewrite-experiment'))
+    experiment.add_argument('--top', type=_positive, default=20)
+    run = commands.add_parser('experiment-run', help='Validate rewrite results in an engine before timing, or collect retained results')
+    run.add_argument('experiment', type=Path)
+    run.add_argument('--dscmd', type=Path)
+    run.add_argument('--server')
+    run.add_argument('--database')
+    run.add_argument('--results', type=Path)
+    run.add_argument('--cold', type=int, default=0, help='Cold iterations clear the selected simulation database cache')
+    run.add_argument('--warm', type=int, default=3)
+    run.add_argument('--timeout', type=_positive, default=300)
+    run.add_argument('--collect-only', action='store_true')
+    run.add_argument('--trace-verified', action='store_true')
     args = parser.parse_args(argv)
     try:
+        if args.command == 'experiment':
+            output = prepare_rewrite_experiment(args.bundle, args.output, top=args.top)
+            print(f'Rewrite proposals and paired queries: {output}\nHTML: {output / "experiment.html"}\nEngine validation and timing have not run.')
+            return 0
+        if args.command == 'experiment-run':
+            output = args.results or args.experiment / 'experiment-results'
+            if args.collect_only:
+                result = collect_rewrite_results(args.experiment, output, trace_verified=args.trace_verified)
+                result.write(output)
+            else:
+                if not args.dscmd or not args.server or not args.database:
+                    raise ModelError('experiment-run needs --dscmd, --server and --database, or --collect-only')
+                result = run_rewrite_experiment(args.experiment, dscmd=args.dscmd, server=args.server,
+                                                database=args.database, results_directory=output,
+                                                cold=args.cold, warm=args.warm, timeout=args.timeout,
+                                                trace_verified=args.trace_verified)
+            print(f'Rewrite evidence: {(output / "experiment.html").resolve()}\nEquality is limited to tested cases; observed durations are not production predictions.')
+            candidates = result.to_dict()['ranked_candidates']
+            return 0 if candidates and all(c['validation_status'] == 'passed_tested_cases' and c['performance_status'] in {
+                'observed_improvement', 'no_observed_improvement', 'mixed_results'} for c in candidates) else 1
         if args.command == 'simulate':
             settings = json.loads(args.config.read_text(encoding='utf-8-sig')) if args.config else {}
             settings = SimulationConfig.from_dict(settings).__dict__.copy()

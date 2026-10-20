@@ -27,6 +27,8 @@ def render_html(analysis, chain_index: dict[str, str]) -> str:
     entities = analysis.model.entities
     graph = analysis.graph
     by_id = {r['id']: r for r in ranked}
+    rewrite_rows = {m['measure_id']: m for m in analysis.rewrite_plan.measures} if analysis.rewrite_plan else {}
+    from .optimizer import render_rewrites
     anchors = {n: _anchor('measure-', n) for n in by_id}
     field, label, unit = {
         'risk': ('risk_score', 'Estimated review priority', 'points'),
@@ -149,6 +151,8 @@ def render_html(analysis, chain_index: dict[str, str]) -> str:
 <p>Recorded context CPU: <b>{_number(runtime.get('query_cpu_ms_context'), 'ms')}</b> ({runtime.get('cpu_coverage', 0)} contexts). Recorded context cost: <b>{_number(runtime.get('query_cu_seconds_context'), 'CU-s')}</b> ({runtime.get('cu_coverage', 0)} contexts).</p>
 <p>These are whole-query costs. They overlap across measures and are not isolated measure timings. Click an operation to see which measures it directly requested.</p>
 <div class="scroll"><table><thead><tr><th>Query operation</th><th>Association</th><th>Recorded CPU</th><th>Recorded cost</th></tr></thead><tbody>{''.join(evidence_rows) or '<tr><td colspan="4">No matched query contexts. Cost is unknown.</td></tr>'}</tbody></table></div></details>'''
+        rewrite = rewrite_rows.get(row['id'])
+        rewrite_html = (f'<details><summary>Guarded rewrite proposals · {len(rewrite["candidates"])} · unvalidated</summary>' + render_rewrites(rewrite) + '</details>') if rewrite else ''
         unresolved = ''.join(f'<li>{link(n)}</li>' for n in row['incomplete_dependency_ids'])
         relevant_cycles = [c for c in graph.cycles if set(c).intersection(chain_nodes)]
         cycle_html = ''.join('<li>' + ' → '.join(link(n) for n in cycle) + '</li>' for cycle in relevant_cycles)
@@ -158,7 +162,7 @@ def render_html(analysis, chain_index: dict[str, str]) -> str:
 <div class="measure-overview"><small>{esc(row['table'])} · {chain_status.lower()} static chain</small><p>{next_step(row)}</p>
 <p>{row['transitive_measure_count']} upstream measures · {len(row['dependent_measures'])} downstream measures · {len(row['findings'])} local findings · {len(findings) - len(row['findings'])} findings in dependencies.</p></div>
 <details id="{anchor}-fixes"><summary>Findings and candidate fixes · {len(findings)}</summary>{''.join(fix_html) or '<p>No named performance pattern was flagged. This does not establish that the measure is cheap.</p>'}</details>
-{chain_html}{evidence_html}
+{rewrite_html}{chain_html}{evidence_html}
 <details id="{anchor}-dax"><summary>DAX definition and source</summary><p class="meta">{esc(entity.source)} · source line {esc(entity.line)}</p><pre>{esc(entity.expression or 'Definition missing')}</pre></details>
 <details id="{anchor}-score"><summary>Score, completeness and filter context</summary><p>Estimated review priority: <b>{_number(row['risk_score'], 'points')}</b>. {esc(SCORE_DESCRIPTION)}</p>
 <table><tbody>{score_rows}</tbody></table><p>Dependency depth: {_number(row['dependency_depth'])}. A complete static chain means all supported references resolved; it does not guarantee runtime correctness or full engine binding.</p>
@@ -221,7 +225,7 @@ def render_html(analysis, chain_index: dict[str, str]) -> str:
 <details><summary>Scoring and ranking method</summary><p>{esc(SCORE_DESCRIPTION)}</p><p>Automatic ranking uses matched native CU observations when available, otherwise matched CPU observations, otherwise static review priority. A caller can explicitly override this choice. Equal values are ordered by stable measure ID. Bars scale to the largest known value in this ranking; they are not percentages of total cost.</p></details>
 <details><summary>Coverage and diagnostics · {len(analysis.warnings)}</summary><ul>{warnings or '<li>No additional model-level diagnostics.</li>'}</ul></details>
 <p>Graphs show static possibilities, not physical engine execution plans. No model files are changed and no formulas are executed. Validate equivalent values, BLANKs, totals and measured performance when testing a candidate change.</p>
-<p><a href="analysis.json">Full analysis JSON</a> · <a href="chain-index.json">Dependency chain index</a></p></section>
+<p><a href="analysis.json">Full analysis JSON</a> · <a href="chain-index.json">Dependency chain index</a>{' · <a href="rewrite-plan.json">Guarded rewrite plan JSON</a>' if analysis.rewrite_plan else ''}</p></section>
 <footer>semantic-hotspots {esc(VERSION)} · Self-contained HTML · No external assets or network requests</footer></main>
 <script>{_SCRIPT}</script></body></html>'''
 

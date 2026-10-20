@@ -7,6 +7,10 @@ import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .optimizer import RewritePlan
 
 from .graph import DependencyGraph
 from .model import Model, ModelError
@@ -14,7 +18,7 @@ from .parser import load_model, parse_model
 from .profile import RuntimeProfile
 from .rules import inspect_expression, relationship_findings
 
-VERSION = '0.3.1'
+VERSION = '0.4.0'
 SCORE_DESCRIPTION = (
     'Ordinal review priority, not elapsed time, engine work, row scans or CU. '
     'Each nonempty expression starts at 1 point; named rules add their documented points. '
@@ -31,6 +35,7 @@ class Analysis:
     rank_by: str
     warnings: list[str]
     profile: RuntimeProfile | None = None
+    rewrite_plan: RewritePlan | None = None
 
     def to_dict(self) -> dict:
         return {'schema_version': '1.0', 'package_version': VERSION,
@@ -42,7 +47,8 @@ class Analysis:
                 'rank_by': self.rank_by, 'static_score_definition': SCORE_DESCRIPTION,
                 'warnings': self.warnings, 'ranked_measures': self.ranked,
                 'dependency_graph': self.graph.to_dict(),
-                'runtime': self.profile.to_dict() if self.profile else None}
+                'runtime': self.profile.to_dict() if self.profile else None,
+                'rewrite_plan': self.rewrite_plan.to_dict() if self.rewrite_plan else None}
 
     def to_json(self, path: str | Path | None = None) -> str:
         text = json.dumps(self.to_dict(), ensure_ascii=False, indent=2, allow_nan=False) + '\n'
@@ -64,9 +70,14 @@ class Analysis:
             (graphs / filename).write_text(json.dumps(self.graph.to_dict(m.id), ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
             index[m.id] = 'chains/' + filename
         (root / 'chain-index.json').write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        if self.rewrite_plan:
+            (root / 'rewrite-plan.json').write_text(json.dumps(self.rewrite_plan.to_dict(), ensure_ascii=False, indent=2, allow_nan=False) + '\n', encoding='utf-8')
         self.to_json(root / 'analysis.json')
         (root / 'report.html').write_text(render_html(self, index), encoding='utf-8')
-        return {'json': root / 'analysis.json', 'html': root / 'report.html', 'chain_index': root / 'chain-index.json'}
+        files = {'json': root / 'analysis.json', 'html': root / 'report.html', 'chain_index': root / 'chain-index.json'}
+        if self.rewrite_plan:
+            files['rewrite_plan'] = root / 'rewrite-plan.json'
+        return files
 
 
 def analyze(model: Model | str | Path | dict, *, profile: RuntimeProfile | None = None,
@@ -145,4 +156,6 @@ def analyze(model: Model | str | Path | dict, *, profile: RuntimeProfile | None 
             value = (item.get('runtime') or {}).get(field)
         return (value is None, -(value or 0), item['id'])
     ranked.sort(key=sort_key)
-    return Analysis(model, graph, ranked, rank_by, list(dict.fromkeys(warnings)), profile)
+    from .optimizer import plan_rewrites
+    rewrites = plan_rewrites(model, graph=graph, ranked_ids=[r['id'] for r in ranked])
+    return Analysis(model, graph, ranked, rank_by, list(dict.fromkeys(warnings)), profile, rewrites)

@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.3.1/semantic_hotspots-0.3.1-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.4.0/semantic_hotspots-0.4.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.3.1"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.4.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and DAX Studio; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -96,7 +96,7 @@ Patterns include:
 - Import/DirectQuery filter paths, bidirectional and many-to-many relationship context.
 - Time-dependent definitions, missing references, cycles and dynamic selected-measure behavior.
 
-Every suggestion provides evidence, a source-expression line, and correctness checks. **No automated rewrite is applied.** Validate the grouping grain, filter context, BLANK behavior and totals before adopting a candidate change.
+Every suggestion provides evidence, a source-expression line, and correctness checks. **No source model is rewritten.** Guarded alternatives are now generated for the narrow subset described below; they remain unvalidated until executed. Validate the grouping grain, filter context, BLANK behavior and totals before adopting a candidate change.
 
 ## Add runtime evidence
 
@@ -148,7 +148,7 @@ Runtime analysis records direct query references and **potential chain contexts*
 | Partial measure-catalog JSON | User-supplied definitions; missing columns, relationships and definitions remain unknown |
 | Binary `.pbix` / `.pbit` | Not supported; export/save as PBIP/TMDL or BIM first |
 
-This is a lexical/call-structure analyzer and metadata projection, **not a full DAX compiler, TOM serializer, M parser, VertiPaq analyzer, query-plan profiler or engine binding authority**. It handles strings, comments, escaped identifiers, nested calls and case-insensitive model-name lookup. Complex variable/extension-column scopes and ambiguous names remain conservative diagnostics. Selected-measure calculation-group dependencies cannot be fully resolved statically. RLS expressions and calculation-group activation/precedence are not expanded into measure graphs. Table storage defaults/mixed partitions can remain unknown when not supplied.
+General lineage uses lexical/call structure and metadata projection; rewrite proposals additionally use a small bound, typed logical subset. This is **not a full DAX compiler, TOM serializer, M parser, VertiPaq analyzer, query-plan profiler or engine binding authority**. It handles strings, comments, escaped identifiers, nested calls and case-insensitive model-name lookup. Complex variable/extension-column scopes and ambiguous names remain conservative diagnostics. Selected-measure calculation-group dependencies cannot be fully resolved statically. RLS expressions and calculation-group activation/precedence are not expanded into measure graphs. Table storage defaults/mixed partitions can remain unknown when not supplied.
 
 TMDL's `ref` declarations and perspective entries are not table definitions; supply the full model folder. Model inputs are read-only. Connection strings and M/SQL partition source text are not retained in exported analysis; DAX expressions and source paths are retained. Reports may therefore contain your business logic and should be handled like the source model.
 
@@ -267,6 +267,70 @@ Compare variants using identical seeds, row counts, distributions, filters, hard
 
 The M import follows [Microsoft's Csv.Document documentation](https://learn.microsoft.com/en-us/powerquery-m/csv-document). Benchmark commands, CSV fields and trace fallback behavior follow the [DAX Studio benchmark command documentation](https://daxstudio.org/docs/features/command-line/commands/benchmark-command/).
 
+## Guarded rewrite proposals and engine validation
+
+Version 0.4 adds an optimizer-inspired proposal layer. The ordinary `analyze` report includes **Guarded rewrite proposals** under each measure: before/after DAX, typed partial logical trees, row/filter context annotations, direct dependencies, guard conditions, and replayable isolated or combined edit steps. `rewrite-plan.json` sits beside the report. Existing risk points remain review priorities, not an optimizer cost model.
+
+The initial rule registry is deliberately small:
+
+| Rule | Proposed change | Conditions |
+|---|---|---|
+| OPT001 | `SUMX(Sales, Sales[Amount])` → `SUM(Sales[Amount])` | Same physical base table, direct physical numeric column, known type, supported enclosing syntax |
+| OPT002 | `FILTER(FILTER(Sales, p), q)` → `FILTER(Sales, (p) && (q))` | Same physical table; row-local comparisons of compatible columns/literals and Boolean combinations; no measures, calls, arithmetic or context changes inside predicates |
+
+Recognized logical operations include scans, qualified columns, measure references, literals, parentheses, scalar binary operators, `SUM`, `SUMX`, `FILTER`, `COUNTROWS`, `CALCULATE`, and Boolean constants. This is **not a full DAX AST/compiler or executable physical planner**. VAR/virtual-table scopes, unsupported calls, unknown types, incomplete/cyclic chains, calculation groups, model functions, and dynamic root format expressions, and random/time-dependent chains withhold proposals. No variable hoisting, join reordering, general filter pushdown, automatic pre-aggregation or runtime plan fusion is implemented. The search emits at most 32 isolated proposals and a 16-step bounded fixed-point combination per measure. No timing benefit is inferred: the DAX engine may already normalize the alternatives.
+
+```python
+from semantic_hotspots import analyze, plan_rewrites
+
+analysis = analyze("examples/rewrite-lab.bim")
+analysis.write("reports/rewrite-review")
+# API-only proposal generation; does not execute or modify the model:
+plan = plan_rewrites("examples/rewrite-lab.bim")
+for candidate in plan.candidates:
+    print(candidate["before"], "=>", candidate["after"])
+```
+
+Prepare synthetic data and the experiment independently:
+
+```powershell
+python -m semantic_hotspots simulate examples/rewrite-lab.bim --config examples/rewrite-config.json -o synthetic-lab
+python -m semantic_hotspots experiment synthetic-lab -o rewrite-experiment --top 20
+```
+
+Load and refresh `synthetic-lab/synthetic-model.bim` in a **separate test engine**, following the synthetic setup above. Then:
+
+```powershell
+python -m semantic_hotspots experiment-run rewrite-experiment --dscmd "C:\Program Files\DAX Studio\dscmd.exe" --server localhost:PORT --database SYNTHETIC_DATABASE --warm 5 --cold 0
+```
+
+The runner defines a unique **query-scoped alias measure**, leaving the loaded model unchanged. Each candidate changes only the root expression; its original dependencies remain intact. It checks a paired query using engine strict equality (`==`) plus explicit original/candidate `ISBLANK` flags for the scalar total and every configured grouped/filtered scenario. The equality flag also retains groups in which both values are BLANK. A mismatch, failed process, missing output or zero validation rows prevents timing that candidate. All-BLANK coverage is labeled uninformative and also prevents timing.
+
+Passing candidates receive separate original/candidate DAX Studio benchmark queries on the same target, with alternating order between scenarios. The default clears no cache; `--cold` explicitly requests database-cache clearing. Keep the synthetic database, data, engine settings, hardware and concurrency stable. Warm results after paired validation may benefit from warmed engine caches. Repeat at several row counts, seeds, cardinalities and skews using separate simulation bundles.
+
+Open `rewrite-experiment/experiment-results/experiment.html`. It ranks the highest **observed baseline mean query duration** first, with correctness and performance status separated. Click into each alternative for before/after DAX, logical plans/dependencies, scenario-specific original/candidate means, cache phases, iteration counts, percent reduction and exact query fingerprints. Mixed improvements/regressions are labeled `mixed_results`; incomplete timing stays unknown. No significance threshold or noise model is implied by `observed_improvement`. Among candidates with tested-case equality and no observed scenario regression, `selected_for_review` marks the lowest sum of equally weighted scenario/cache mean durations for that measure; this is a fixture-specific choice, not a production workload weighting.
+
+`experiment.json`, query files, raw validation/timing CSVs and `rewrite-runner.json` retain reproducible evidence. Changed query files or mismatched capture fingerprints are rejected. Collect retained outputs without contacting an engine:
+
+```powershell
+python -m semantic_hotspots experiment-run rewrite-experiment --collect-only --results rewrite-experiment/experiment-results
+```
+
+```python
+from semantic_hotspots import prepare_rewrite_experiment, run_rewrite_experiment
+
+experiment = prepare_rewrite_experiment("synthetic-lab", "rewrite-experiment")
+# After loading and refreshing the original synthetic BIM in a separate engine:
+result = run_rewrite_experiment(
+    experiment, dscmd=r"C:\Program Files\DAX Studio\dscmd.exe",
+    server="localhost:PORT", database="SYNTHETIC_DATABASE", warm=5,
+)
+```
+
+Equality covers **finite tested contexts**, not universal semantic equivalence. The runner does not compare runtime type metadata, verify loaded-model identity or attest offline CSV authenticity. Numeric comparison is exact; floating-point differences fail conservatively. Synthetic equality and timings do not establish production performance, DirectQuery latency, RLS behavior or CU. Add boundary values, duplicates, blanks, detail/subtotal scenarios, and empty selections to the workload configuration. The bundled example is fictional. Local and CI engine-runner tests use mocks; a real DAX engine is a separate integration requirement.
+
+Query-scoped output collection follows the [DAX Studio CSV command](https://daxstudio.org/docs/features/command-line/commands/csv-command/). Rewrite guards use Microsoft's [SUMX](https://learn.microsoft.com/en-us/dax/sumx-function-dax) and [FILTER](https://learn.microsoft.com/en-us/dax/filter-function-dax) semantics. The design borrows the separation of analyzed logical structures and optimization rules illustrated by [Spark EXPLAIN](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-explain.html).
+
 ## Rule references
 
 The rule text was checked against these primary sources. Examples and advice are paraphrased; no page content is bundled.
@@ -278,7 +342,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.3.1.
+MIT licensed. Version 0.4.0.
 
 ## Contributing and data handling
 

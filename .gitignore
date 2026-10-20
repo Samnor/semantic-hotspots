@@ -33,3 +33,9 @@ RELEASE-VERIFICATION.json
 Thumbs.db
 .idea/
 .vscode/
+
+# Generated rewrite experiments
+rewrite-experiment/
+experiment-results/
+smoke-rewrite-lab/
+smoke-rewrites/

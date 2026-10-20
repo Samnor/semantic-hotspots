@@ -1,11 +1,11 @@
-semantic-hotspots 0.3.1
+semantic-hotspots 0.4.0
 Requires Python 3.10 or later.
 
 Create a virtual environment:
   python -m venv .venv
 
 Install the universal wheel:
-  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.3.1/semantic_hotspots-0.3.1-py3-none-any.whl"
+  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.4.0/semantic_hotspots-0.4.0-py3-none-any.whl"
 
 Check the installation:
   .\.venv\Scripts\python.exe -m semantic_hotspots --version

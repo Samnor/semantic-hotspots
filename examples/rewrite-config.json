@@ -1,0 +1,64 @@
+{
+  "seed": 42,
+  "fact_rows": 10000,
+  "dimension_rows": 50,
+  "top": 20,
+  "tables": {
+    "Sales": {
+      "columns": {
+        "Amount": {
+          "min": -100,
+          "max": 10000,
+          "null_fraction": 0.1
+        }
+      }
+    },
+    "Customer": {
+      "columns": {
+        "Region": {
+          "values": [
+            "North",
+            "South",
+            "East",
+            "West"
+          ]
+        }
+      }
+    }
+  },
+  "workloads": [
+    {
+      "name": "by-region",
+      "group_by": [
+        [
+          "Customer",
+          "Region"
+        ]
+      ]
+    },
+    {
+      "name": "north-only",
+      "filters": [
+        {
+          "table": "Customer",
+          "column": "Region",
+          "values": [
+            "North"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "empty-selection",
+      "filters": [
+        {
+          "table": "Sales",
+          "column": "Amount",
+          "values": [
+            -1000000
+          ]
+        }
+      ]
+    }
+  ]
+}

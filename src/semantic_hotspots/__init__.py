@@ -10,4 +10,9 @@ from .benchmark import BenchmarkResults, collect_benchmarks, read_benchmark_csv,
 __all__ = ['Analysis', 'CycleError', 'DependencyGraph', 'Entity', 'Model', 'ModelError',
            'Relationship', 'RuntimeProfile', 'Table', 'analyze', 'load_model', 'parse_model',
            'SimulationBundle', 'SimulationConfig', 'simulate', 'BenchmarkResults',
-           'collect_benchmarks', 'read_benchmark_csv', 'run_benchmarks']
+           'collect_benchmarks', 'read_benchmark_csv', 'run_benchmarks',
+           'LogicalNode', 'RewritePlan', 'plan_rewrites', 'RewriteResults',
+           'prepare_rewrite_experiment', 'collect_rewrite_results', 'run_rewrite_experiment']
+
+from .optimizer import LogicalNode, RewritePlan, plan_rewrites
+from .experiments import RewriteResults, prepare_rewrite_experiment, collect_rewrite_results, run_rewrite_experiment
