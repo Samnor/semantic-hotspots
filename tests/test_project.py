@@ -38,6 +38,8 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(len(visual['query']['queryState']['Values']['projections']),4)
         self.assertEqual(len(list(self.root.glob('Showcase.Report/definition/pages/*/page.json'))),1)
         self.assertEqual(result.manifest['visual_count'],1)
+        self.assertEqual(self.read('Showcase.Report/definition/version.json')['version'],'2.0.0')
+        self.assertEqual(self.read('Showcase.SemanticModel/model.bim')['model']['defaultPowerBIDataSourceVersion'],'powerBI_V3')
         names={m['name'] for t in self.read('Showcase.SemanticModel/model.bim')['model']['tables'] for m in t.get('measures',[])}
         self.assertEqual(names,{'Revenue','Cost total','Margin','Candidate Revenue','Candidate Margin'})
         self.assertIn('not run',(self.root/'showcase.html').read_text())
@@ -48,6 +50,10 @@ class ProjectTests(unittest.TestCase):
         expr=table['partitions'][0]['source']['expression']
         self.assertIn("'Sales'[CustomerKey]",expr);self.assertIn("'Sales'[DateKey]",expr)
         self.assertIn("SUM('Sales'[Amount])",expr);self.assertIn("COUNTROWS('Sales')",expr)
+        bindings={c['name']:c['sourceColumn'] for c in table['columns']}
+        self.assertEqual(bindings['CustomerKey'],'Sales[CustomerKey]')
+        self.assertEqual(bindings['DateKey'],'Sales[DateKey]')
+        self.assertEqual(bindings['State 1'],'[State 1]')
         candidate=result.manifest['changes'][1]['candidate']['expression']
         self.assertIn('DIVIDE',candidate);self.assertIn("'Showcase Summary'[State 1]",candidate)
         self.assertNotIn("'Sales'[",candidate)
@@ -136,6 +142,7 @@ class ProjectTests(unittest.TestCase):
             for kind,query in case['queries'].items():
                 text=(self.root/query['file']).read_text()
                 self.assertEqual(hashlib.sha256(text.encode()).hexdigest(),query['sha256'])
+                self.assertEqual(hashlib.sha256((self.root/query['file']).read_bytes()).hexdigest(),query['sha256'])
                 if kind=='validation':
                     self.assertIn('OriginalBlank_1',text);self.assertIn('CandidateBlank_1',text)
                     self.assertIn(' == ',text);self.assertIn('Equal_2',text)

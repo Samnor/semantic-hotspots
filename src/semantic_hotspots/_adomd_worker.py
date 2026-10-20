@@ -187,24 +187,19 @@ def execute(factory, *, operation, output, query, server, database, timeout, war
 
 def catalogs(factory, server, timeout):
     with connection(factory, server, None, timeout) as conn:
-        command, reader = conn.CreateCommand(), None
+        schema = None
         try:
-            command.CommandText = 'SELECT CATALOG_NAME FROM $SYSTEM.DBSCHEMA_CATALOGS'
-            command.CommandTimeout = max(1, math.ceil(timeout))
-            reader = command.ExecuteReader()
-            names = set()
-            while reader.Read():
-                if not reader.IsDBNull(0):
-                    names.add(str(reader.GetValue(0)))
-            if reader.NextResult():
-                raise ModelError('Unexpected catalog result sets')
-            return sorted(names)
+            # Use XMLA Discover rather than routing DMV SQL through Execute:
+            # Desktop can otherwise parse the statement as DAX.
+            schema = conn.GetSchemaDataSet('DBSCHEMA_CATALOGS', None)
+            tables = list(schema.Tables)
+            if len(tables) != 1:
+                raise ModelError('Unexpected catalog schema tables')
+            return sorted({str(row['CATALOG_NAME']) for row in tables[0].Rows
+                           if str(row['CATALOG_NAME'])})
         finally:
-            try:
-                if reader is not None:
-                    reader.Dispose()
-            finally:
-                command.Dispose()
+            if schema is not None:
+                schema.Dispose()
 
 
 def main(argv=None):

@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.7.0/semantic_hotspots-0.7.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.7.1/semantic_hotspots-0.7.1-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.7.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.7.1"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -231,7 +231,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.7.0/semantic_hotspots-0.7.0-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.7.1/semantic_hotspots-0.7.1-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -239,7 +239,7 @@ python -m semantic_hotspots experiment-run rewrite-experiment --server localhost
 
 Open and refresh the intended synthetic model first. `engine-sessions` lists local Desktop endpoints and their catalog names; select both explicitly. Discovery uses best-effort workspace paths that can change or contain stale entries. `engine-sessions --server localhost:PORT` probes an explicit local endpoint when discovery is unavailable. The library does not identify a model by its open window title or attest that the selected database has the intended data.
 
-The direct backend is a thin client using [Microsoft ADOMD.NET](https://learn.microsoft.com/analysis-services/client-libraries) through [Python.NET](https://pythonnet.github.io/pythonnet/python.html). It uses the actual loaded DAX engine. It is **not an emulator**, and does not need a DAX Studio installation. Python.NET installs via pip; Microsoft's DLL is not bundled or downloaded. The normal Desktop installation's `bin` directory is searched. If needed, pass `--adomd-path` to an installed, trusted `Microsoft.AnalysisServices.AdomdClient.dll` or its directory. Microsoft Store installations may require an explicit accessible client DLL. The default runtime is .NET Framework (`netfx`); a .NET Core client DLL needs an installed compatible .NET runtime and `--dotnet-runtime coreclr`. Match client/Python architecture and runtime; copying a DLL without its dependencies may not work.
+The direct backend is a thin client using [Microsoft ADOMD.NET](https://learn.microsoft.com/analysis-services/client-libraries) through [Python.NET](https://pythonnet.github.io/pythonnet/python.html). It uses the actual loaded DAX engine. It is **not an emulator**, and does not need a DAX Studio installation. Python.NET installs via pip; Microsoft's DLL is not bundled or downloaded. The normal Desktop installation's `bin` directory is searched, but current installations may contain only an internal `Microsoft.PowerBI.AdomdClient.dll`; that is not the public SDK used here. If the public client is absent, install Microsoft's [ADOMD client package](https://www.nuget.org/packages/Microsoft.AnalysisServices.AdomdClient/) separately and pass `--adomd-path` to its trusted `Microsoft.AnalysisServices.AdomdClient.dll` or directory. Preserve the package's required managed and native dependencies. Microsoft Store installations may also require an explicit accessible client DLL. The default runtime is .NET Framework (`netfx`); a .NET Core client DLL needs an installed compatible .NET runtime and `--dotnet-runtime coreclr`. Match client/Python architecture and runtime; copying a DLL without its dependencies may not work.
 
 ADOMD currently supports **local loopback endpoints and warm iterations only**. Each workload runs in an isolated Python subprocess with a wall-clock timeout, so a blocked .NET call cannot hang the parent indefinitely. One connection is reused for that workload's iterations. Timings start after connection setup and include execution, result transfer, and complete client reading/conversion. Warm means no cache clearing, including the first iteration; it does not guarantee a prewarmed cache. CPU, FE and SE remain unknown, even if a collected CSV is read with `--trace-verified`. These are observed client elapsed times, not server-only timings, production predictions, or CU estimates. The backend does not refresh/deploy/edit the model or clear its cache.
 
@@ -254,7 +254,7 @@ python -m semantic_hotspots query powerbi-showcase/queries/QUERY-candidate.dax -
 
 Replace `QUERY-*` with actual generated filenames. Existing output files are never overwritten. Inspect all equality/BLANK flags and meaningful nonblank values before timing; a successful query alone is not a correctness verdict. Benchmark CSVs can be read with `read_benchmark_csv`. Showcase validation/A/B comparison remains a separate manual workflow using these queries; `experiment-run` accepts rewrite experiments, not `showcase.json`.
 
-The core remains dependency-free. Client orchestration and error/evidence handling have automated tests; Windows CI additionally loads the official ADOMD library and checks real .NET value serialization. A live Power BI Desktop engine connection, model refresh and DAX performance still require integration validation on Windows. Static analysis and mock generation do not reproduce VertiPaq/Formula Engine execution or DirectQuery source behavior.
+The core remains dependency-free. Client orchestration and error/evidence handling have automated tests; Windows CI additionally loads the official ADOMD library and checks real .NET value serialization. A manual Windows Server 2022 check with Power BI Desktop 2.159.883.0, Python 3.14 and the explicit official ADOMD 19.118.3 .NET Framework client opened/refreshed one fictional showcase and executed its validation and timing queries. All six prefix contexts passed strict value/BLANK comparisons (40 nonblank original values); five iterations per baseline/candidate workload produced mixed median client timings of roughly 2–5 ms, so no speedup is established. This is bounded integration evidence for one fixture; CI does not launch Desktop or execute DAX. Static analysis and mock generation do not reproduce VertiPaq/Formula Engine execution or DirectQuery source behavior.
 
 ### Optional DAX Studio tracing and cold-cache benchmarks
 
@@ -480,7 +480,7 @@ result = export_project(
 print(result.project_path)
 ```
 
-The exporter writes the documented [PBIP report structure](https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-report) and [BIM semantic model structure](https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-dataset), using a [calculated table](https://learn.microsoft.com/en-us/analysis-services/tabular-models/create-a-calculated-table-ssas-tabular) and [embedded compressed data](https://learn.microsoft.com/en-us/powerquery-m/binary-decompress). CI checks eight project/report/connection documents against Microsoft's versioned schemas (`tools/check_project_schemas.py`, development-only `jsonschema` dependency). Schema validation does not validate BIM semantics, Desktop loading, refresh, visual rendering or DAX results. No real Desktop/engine execution is performed by local or CI tests. PBIX saving requires Power BI Desktop; this library exports PBIP and does not publish or deploy it.
+The exporter writes the documented [PBIP report structure](https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-report) and [BIM semantic model structure](https://learn.microsoft.com/en-us/power-bi/developer/projects/projects-dataset), using a [calculated table](https://learn.microsoft.com/en-us/analysis-services/tabular-models/create-a-calculated-table-ssas-tabular) and [embedded compressed data](https://learn.microsoft.com/en-us/powerquery-m/binary-decompress). CI checks eight project/report/connection documents against Microsoft's versioned schemas (`tools/check_project_schemas.py`, development-only `jsonschema` dependency). Schema validation does not validate BIM semantics, Desktop loading, refresh, visual rendering or DAX results. The manual Windows integration check described above also rendered the one-page comparison matrix and refreshed its 5,000 detail rows into 288 summary rows. This is a row-count reduction, not a measured performance multiplier. Automated local and CI tests do not launch Desktop or execute DAX. PBIX saving requires Power BI Desktop; this library exports PBIP and does not publish or deploy it.
 
 ## Rule references
 
@@ -493,7 +493,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.7.0.
+MIT licensed. Version 0.7.1.
 
 ## Contributing and data handling
 

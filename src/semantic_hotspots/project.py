@@ -104,6 +104,10 @@ def _summary(model, row, candidate):
     for pair in keys:
         source=_column(model,pair)
         key_names[source.id]=column(source.name,_type(source))
+        # Grouping fields retain their physical table qualifier in the result
+        # schema. Binding them as extension fields ([Key]) loses the column
+        # during Desktop loading and invalidates the summary relationship.
+        columns[-1]['sourceColumn']=source.table+'['+source.name.replace(']',']]')+']'
     states={}; expressions=[]; bindings=[]
     for state in candidate['component_states']:
         op=state['function']; entity=model.entities[state['target']]
@@ -185,7 +189,7 @@ def _report(root,spec,changes):
     _json(root/'Showcase.pbip',_doc('project',version='1.0',artifacts=[{'report':{'path':'Showcase.Report'}}]))
     _json(report/'definition.pbir',_doc('pbir',version='4.0',datasetReference={'byPath':{'path':'../Showcase.SemanticModel'}}))
     _json(root/'Showcase.SemanticModel/definition.pbism',_doc('pbism',version='1.0',settings={'qnaEnabled':False}))
-    _json(definition/'version.json',_doc('version',version='4.0.0'))
+    _json(definition/'version.json',_doc('version',version='2.0.0'))
     _json(definition/'report.json',_doc('report',themeCollection={}))
     _json(definition/'pages/pages.json',_doc('pages',pageOrder=[page],activePageName=page))
     _json(definition/f'pages/{page}/page.json',_doc('page',name=page,displayName='Measure showcase',displayOption='FitToWidth',width=1280,height=720))
@@ -208,6 +212,7 @@ def _report(root,spec,changes):
 
 
 def _embed(bim,bundle):
+    bim['model']['defaultPowerBIDataSourceVersion']='powerBI_V3'
     tables={t['name']:t for t in bim['model']['tables']}; size=0
     for entry in bundle.manifest['tables']:
         if entry['kind']!='synthetic-physical':continue
@@ -244,11 +249,11 @@ def _queries(root,analysis,row,changes,summary,fact):
         for kind,fields in projections.items():
             expression=('SUMMARIZECOLUMNS('+', '.join(groups+fields)+')') if groups else 'ROW('+', '.join(fields)+')'
             query='EVALUATE\n'+expression+'\n'; filename=f'queries/{workload["id"]}-{kind}.dax'
-            (root/filename).parent.mkdir(exist_ok=True);(root/filename).write_text(query,encoding='utf-8')
+            (root/filename).parent.mkdir(exist_ok=True);(root/filename).write_text(query,encoding='utf-8',newline='\n')
             files[kind]={'file':filename,'sha256':hashlib.sha256(query.encode()).hexdigest()}
         results.append({'scenario':workload['scenario'],'group_by':workload['group_by'],'queries':files})
     counts='EVALUATE\nROW("DetailRows", COUNTROWS('+Entity('table',fact,'').qualified_name+'), "SummaryRows", COUNTROWS('+Entity('table',summary,'').qualified_name+'))\n'
-    (root/'queries/row-counts.dax').write_text(counts,encoding='utf-8')
+    (root/'queries/row-counts.dax').write_text(counts,encoding='utf-8',newline='\n')
     return results
 
 

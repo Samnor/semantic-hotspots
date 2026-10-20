@@ -153,9 +153,19 @@ class EngineTests(unittest.TestCase):
             self.assertIsNotNone(desktop_sessions(server='localhost:123')[0]['error'])
 
     def test_catalog_reader_is_closed_and_dll_lookup_is_explicit(self):
-        conn = Connection([Reader(['CATALOG_NAME'], [['Synthetic'],['Synthetic'],[None]])])
+        conn = Connection([])
+        schema = SimpleNamespace(Tables=[SimpleNamespace(Rows=[{'CATALOG_NAME':'Synthetic'},
+                                                               {'CATALOG_NAME':'Synthetic'},
+                                                               {'CATALOG_NAME':''}])], disposed=False)
+        schema.Dispose = lambda:setattr(schema,'disposed',True)
+        calls=[]
+        def discover(name, restrictions):
+            calls.append((name,restrictions))
+            return schema
+        conn.GetSchemaDataSet = discover
         self.assertEqual(worker.catalogs(lambda _:conn, 'localhost:123', 1), ['Synthetic'])
-        self.assertTrue(conn.disposed and conn.commands[0].disposed)
+        self.assertEqual(calls,[('DBSCHEMA_CATALOGS',None)])
+        self.assertTrue(conn.disposed and schema.disposed)
         dll = self.root/'Microsoft.AnalysisServices.AdomdClient.dll';dll.touch()
         self.assertEqual(worker.find_adomd(self.root),dll)
         with self.assertRaises(ModelError): worker.find_adomd(self.root/'missing.dll')

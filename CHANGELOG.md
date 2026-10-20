@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+
+- Discover local catalogs through ADOMD XMLA schema discovery instead of routing schema SQL through DAX execution.
+- Fix generated showcase summary grouping-column bindings, PBIR content version and embedded-model enhanced metadata so the comparison matrix opens and refreshes in Desktop.
+- Preserve LF query bytes on Windows so generated query fingerprints match the files on disk.
+- Manually validate one fictional showcase on Windows Server 2022 with Power BI Desktop 2.159.883.0, Python 3.14 and the official ADOMD 19.118.3 client: all six prefix contexts pass exact value/BLANK comparisons. Separate warm timings are mixed; no performance improvement is established. This bounded check does not establish compatibility for every model or replace engine integration tests.
+
 ## 0.7.0
 
 - Make DAX Studio optional: benchmark and guarded rewrite runners default to a direct local Windows ADOMD client when no dscmd path is supplied.
