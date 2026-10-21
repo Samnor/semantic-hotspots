@@ -84,7 +84,7 @@ class LandingVisualTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
             files=write_measure_proposal(m,'Iterator','[Iterator] + 1',root/'bad',landing_visual=context)
-            self.assertIsNone(files['validation']);self.assertIn('cyclic',files['validation_reason'])
+            self.assertIsNone(files['validation']);self.assertIn('dependency cycle was detected',files['validation_reason'])
             self.assertFalse((root/'bad/validate-total.dax').exists())
             self.assertFalse(json.loads(files['json'].read_text(encoding='utf-8'))['proposed']['is_acyclic'])
             valid=write_measure_proposal(m,'Iterator','SUM(Sales[Amount])',root/'good',landing_visual=context)

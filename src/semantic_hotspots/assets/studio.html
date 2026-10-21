@@ -178,7 +178,7 @@ function renderCreated(r){
  $('createdLinks').replaceChildren(downloadLink('Download new measure',c.dax),downloadLink('Download full package',c.zip),link('Compare original & new DAGs ↗',c.comparison));
  if(c.validation)$('createdLinks').append(downloadLink('Total validation query',c.validation));
  if(c.contexts)$('createdLinks').append(downloadLink('Visual contexts & queries',c.contexts));
- const visuals=r.landing_visuals||[],ready=c.validation_available?visuals.filter(v=>v.workload_count>0).length:0;$('createdContext').textContent='Table: '+c.table+' · '+visuals.length+' selected visual contexts'+(visuals.length?' · '+ready+' with representative validation queries':'')+' · Original unchanged'+(!c.validation_available?' · Validation queries withheld: incomplete dependency chain':'');$('createdCopyMessage').textContent='';
+ const visuals=r.landing_visuals||[],ready=c.validation_available?visuals.filter(v=>v.workload_count>0).length:0;$('createdContext').textContent='Table: '+c.table+' · '+visuals.length+' selected visual contexts'+(visuals.length?' · '+ready+' with representative validation queries':'')+' · Original unchanged'+(!c.validation_available?' · Validation queries withheld: see the specific blockers above':'');$('createdCopyMessage').textContent='';
 }
 $('copyCreated').onclick=async()=>{try{await navigator.clipboard.writeText($('createdDax').textContent);$('createdCopyMessage').textContent='New measure copied'}catch(e){$('createdCopyMessage').textContent='Use Download new measure or select the definition above.'}};
 $('measureSearch').oninput=fillFocusMeasures;
