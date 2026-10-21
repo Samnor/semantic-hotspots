@@ -53,7 +53,8 @@ class VariableTests(unittest.TestCase):
         self.assertTrue(computation_dag(model,'Total')['is_acyclic'])
 
     def test_invalid_or_ambiguous_scopes_never_enable_a_rewrite(self):
-        for text in ['VAR x = later VAR later = SUMX(Sales, Sales[Amount]) RETURN x',
+        for text in ['VAR visible = 1 RETURN SUMX(Sales, Sales[Amount])',
+                     'VAR x = later VAR later = SUMX(Sales, Sales[Amount]) RETURN x',
                      'VAR x = x RETURN SUMX(Sales, Sales[Amount])',
                      'VAR x = 1 VAR x = SUMX(Sales, Sales[Amount]) RETURN x',
                      'VAR Sales = 1 RETURN SUMX(Sales, Sales[Amount])',

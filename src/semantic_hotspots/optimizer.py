@@ -100,7 +100,7 @@ class _Parser:
         while True:
             name = self.take()
             if (name.kind != 'NAME' or not re.fullmatch(r'(?:__)?[A-Za-z][A-Za-z0-9_]*', name.value)
-                    or name.value.upper() in {'VAR', 'RETURN', 'TRUE', 'FALSE', 'NOT', 'IN'}
+                    or name.value.upper() in {'VAR', 'RETURN', 'TRUE', 'FALSE', 'NOT', 'IN', 'VISIBLE'}
                     or name.value.casefold() in self.resolver.tables or name.value.casefold() in self.scopes[-1]):
                 raise ModelError('Unsupported or duplicate VAR name at offset '+str(name.start))
             self.take('=')

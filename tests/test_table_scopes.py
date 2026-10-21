@@ -20,8 +20,8 @@ class TableScopeTests(unittest.TestCase):
     def test_extension_survives_table_variables_filter_and_row_local_let(self):
         text=('VAR groups = VALUES(Sales[Category])\n'
               'VAR scored = ADDCOLUMNS(groups,"@score",VAR n = CALCULATE(SUMX(Sales,Sales[Amount])) RETURN IF(ISBLANK(n),BLANK(),n))\n'
-              'VAR visible = FILTER(scored,NOT ISBLANK([@score]))\n'
-              'RETURN IF(ISEMPTY(visible),BLANK(),SUMX(visible,[@score]))')
+              'VAR keptRows = FILTER(scored,NOT ISBLANK([@score]))\n'
+              'RETURN IF(ISEMPTY(keptRows),BLANK(),SUMX(keptRows,[@score]))')
         model=parse_model(source(text));before=copy.deepcopy(model)
         info=Resolver(model).scan(text,model.measure('Total'))
         self.assertEqual(info.virtual_columns,['@score','@score'])
@@ -131,6 +131,28 @@ class TableScopeTests(unittest.TestCase):
         result=create_measure(data,'Total').data
         self.assertTrue(result['validation_available'])
         self.assertFalse(result['dependency_issues'])
+
+    def test_unrelated_model_column_does_not_make_a_bound_alias_ambiguous(self):
+        text='VAR t=SELECTCOLUMNS(Sales,"Amount",1) RETURN SUMX(t,[Amount])'
+        model=parse_model(source(text));info=Resolver(model).scan(text,model.measure('Total'))
+        self.assertFalse(info.unresolved);self.assertFalse(info.reference_blockers)
+        self.assertEqual(info.virtual_columns,['Amount'])
+        self.assertNotIn('column:Sales/Amount',{r.target for r in info.references})
+        result=create_measure(model,'Total').data
+        self.assertTrue(result['validation_available'])
+
+    def test_escaped_unicode_aliases_retain_exact_identity_in_exported_dags(self):
+        for alias,reference in [('a]b','[a]]b]'),('@résumé','[@résumé]')]:
+            with self.subTest(alias=alias):
+                text='VAR t=ADDCOLUMNS(Sales,"'+alias+'",1) RETURN SUMX(t,'+reference+')'
+                result=create_measure(source(text),'Total').data
+                dag=result['dag_comparison']['original']
+                self.assertTrue(dag['dependency_complete'])
+                use=next(n for n in dag['nodes'] if n.get('operation')=='extension_column')
+                self.assertEqual(use['expression'],reference)
+                definition=next(n for n in dag['nodes'] if n.get('operation')=='extension_definition')
+                self.assertEqual(definition['label'],'['+alias+'] :=')
+                self.assertTrue(any(e['from']==use['id'] and e['to']==definition['id'] for e in dag['edges']))
 
     def test_today_and_missing_helpers_remain_separate_guards(self):
         text='VAR clock=TODAY() VAR t=ADDCOLUMNS(Sales,"@n",IF(YEAR(clock)>2000,[Empty],BLANK())) RETURN SUMX(t,[@n])'
