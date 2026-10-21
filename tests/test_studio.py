@@ -247,7 +247,7 @@ class StudioTests(unittest.TestCase):
         studio.dispatch('measure',{'measure':owner})
         for action,data in [('measure',{'landing_matrix':'monthly-margin'}),
                             ('matrix',{'id':'monthly-margin','reviewed':True})]:
-            with self.subTest(action=action),self.assertRaisesRegex(ModelError,'directly displays'):
+            with self.subTest(action=action),self.assertRaisesRegex(ModelError,'directly display'):
                 studio.dispatch(action,dict(data,measure=owner))
         for choice in choices:
             studio.dispatch('measure',{'measure':owner,'landing_matrix':choice['id']})
@@ -264,6 +264,37 @@ class StudioTests(unittest.TestCase):
         choices=studio.snapshot()['matrices']
         self.assertEqual(len({c['visual_label'] for c in choices}),2)
         self.assertTrue(all(c['id'] in c['visual_label'] for c in choices))
+
+    def test_create_new_measure_is_one_action_with_zero_or_multiple_visuals(self):
+        from semantic_hotspots import MatrixSpec
+        studio=self.server.studio;studio.dispatch('demo',{})
+        owner=studio.model.measure('Revenue iterator').id
+        second=next(s.to_dict() for s in studio.specs if s.id=='iterator-review')
+        second['id']='iterator-second';second['title']='Second iterator context'
+        studio.specs.append(MatrixSpec.from_dict(second));studio.analyze_current()
+        original=[(e.id,e.expression) for e in studio.model.entities.values()]
+        studio.dispatch('create-measure',{'measure':owner,'landing_matrices':[]})
+        result=studio.snapshot()['measure_review'];self.assertIsNotNone(result['created'])
+        self.assertFalse(result['landing_visuals']);self.assertEqual(result['created']['expression'],'SUM(Sales[Amount])')
+        self.assertNotEqual(result['created']['measure_id'],owner)
+        self.assertEqual(self.request('GET',result['created']['dax'],headers=self.headers)[0],200)
+        studio.dispatch('create-measure',{'measure':owner,'landing_matrices':['iterator-review','iterator-second']})
+        result=studio.snapshot()['measure_review'];self.assertEqual(len(result['landing_visuals']),2)
+        self.assertIsNone(result['landing_visual']);self.assertTrue(result['created']['contexts'])
+        self.assertEqual(self.request('GET',result['created']['zip'],headers=self.headers)[0],200)
+        self.assertIsNone(studio.snapshot()['project'])
+        with self.assertRaises(ModelError):studio.dispatch('generate',{'measure':owner,'matrix':'iterator-review'})
+        self.assertEqual([(e.id,e.expression) for e in studio.model.entities.values()],original)
+        studio.dispatch('create-measure',{'measure':owner,'landing_matrices':[]})
+        self.assertFalse(studio.snapshot()['measure_review']['landing_visuals'])
+
+    def test_create_measure_rejects_unrelated_duplicate_unknown_and_malformed_contexts(self):
+        studio=self.server.studio;studio.dispatch('demo',{})
+        owner=studio.model.measure('Revenue iterator').id
+        for ids in [['monthly-margin'],['missing'],['iterator-review','iterator-review'],'iterator-review',[None]]:
+            with self.subTest(ids=ids),self.assertRaises(ModelError):
+                studio.dispatch('create-measure',{'measure':owner,'landing_matrices':ids})
+        self.assertIsNone(studio.snapshot()['measure_review'])
 
 
 if __name__=='__main__':unittest.main()

@@ -30,6 +30,7 @@ from .performance import read_performance_analyzer
 from .client_setup import install_adomd
 from .progress import emit
 from .focus import review_measure, write_measure_proposal
+from .creation import _create_from_review
 
 
 _ANALYSIS_STAGES = [('load', 'Read model'), ('dependencies', 'Trace dependencies'),
@@ -39,7 +40,7 @@ _ACTIONS = {'inspect': 'Analyze model', 'demo': 'Analyze synthetic demo', 'matri
             'generate': 'Build comparison', 'open': 'Open in Power BI Desktop',
             'discover': 'Find Desktop models', 'setup-client': 'Install official client',
             'run': 'Validate and benchmark', 'measure':'Review selected measure',
-            'measure-proposal':'Compare proposed measure'}
+            'measure-proposal':'Compare proposed measure','create-measure':'Create new measure'}
 
 
 def _matrix_measure_ids(model, spec):
@@ -281,21 +282,25 @@ class Studio:
             self.inventory()
             self.analyze_current()
             if data.get('measure'):
-                self.dispatch('measure',{'measure':data['measure'],'landing_matrix':spec.id})
-        elif action == 'measure':
+                self.dispatch('measure',{'measure':data['measure'],'landing_matrices':data.get('landing_matrices',[spec.id])})
+        elif action in {'measure','create-measure'}:
             if self.analysis is None:
                 raise ModelError('Analyze a model successfully before choosing a measure')
             selected=data.get('measure')
             if not isinstance(selected,str) or not selected:
                 raise ModelError('Choose a measure from the loaded model')
-            landing_id=data.get('landing_matrix')
-            landing=None
-            if landing_id:
-                landing=next((s for s in self.specs if s.id==landing_id),None)
-                if landing is None:raise ModelError('Choose an existing optional landing matrix')
-                if self.model.measure(selected).id not in _matrix_measure_ids(self.model,landing):
-                    raise ModelError('Choose a matrix that directly displays the selected measure, or continue without visual context')
-            review=review_measure(self.model,selected,analysis=self.analysis,progress=self.report,landing_matrix=landing)
+            ids=data.get('landing_matrices')
+            if ids is None:ids=[data['landing_matrix']] if data.get('landing_matrix') else []
+            if not isinstance(ids,list) or any(not isinstance(i,str) or not i for i in ids) or len(set(ids))!=len(ids):
+                raise ModelError('Select each visual context once using a list of visual IDs')
+            landings=[]
+            for identity in ids:
+                spec=next((s for s in self.specs if s.id==identity),None)
+                if spec is None:raise ModelError('Choose existing optional visual contexts')
+                if self.model.measure(selected).id not in _matrix_measure_ids(self.model,spec):
+                    raise ModelError('Choose matrices that directly display the selected measure, or continue without visual context')
+                landings.append(spec)
+            review=review_measure(self.model,selected,analysis=self.analysis,progress=self.report,landing_matrices=landings)
             key,root=self.new_artifact()
             emit(self.report,'measure','Review selected measure',detail='Write this measure’s proposals and dependency chain')
             review.write(root/'measure')
@@ -303,15 +308,26 @@ class Studio:
             base=f'/artifacts/{key}/measure/'
             value.update(url=base+'report.html',original_dag=base+'original.dag.json',chain=base+'original.txt',
                          original_dax=base+'original.dax',candidates=[],custom=None,landing_visual=None)
-            if review.data['landing_visual']:
-                context=review.data['landing_visual']
-                value['landing_visual']={k:copy.deepcopy(context[k]) for k in ['matrix_id','title','original_values','spec','diagnostics','grain_advice','summary_export']}
-                value['landing_visual'].update(context_url=base+'landing-visual.json',workload_count=len(context['workloads']))
+            value['landing_visuals']=[]
+            for i,context in enumerate(review.data['landing_visuals'],1):
+                item={k:copy.deepcopy(context[k]) for k in ['matrix_id','title','original_values','spec','diagnostics','grain_advice','summary_export']}
+                item.update(context_url=base+'visual-contexts.json',workload_count=len(context['workloads']))
+                value['landing_visuals'].append(item)
+            value['landing_visual']=value['landing_visuals'][0] if len(value['landing_visuals'])==1 else None
             for c in review.data['candidates']:
                 url=base+'candidates/'+c['id']+'/'
                 value['candidates'].append({'id':c['id'],'title':c['title'],'after':c['after'],
                     'url':url+'report.html','dax':url+'proposed.dax','validation':url+'validate-total.dax',
-                    'landing_queries':url+'landing-queries.zip' if review.data['landing_visual'] and review.data['landing_visual']['workloads'] else None})
+                    'landing_queries':url+'visual-context-queries.zip' if any(v['workloads'] for v in review.data['landing_visuals']) else None})
+            value['created']=None
+            if action=='create-measure':
+                created=_create_from_review(self.model,review,progress=self.report)
+                created.write(root/'new-measure')
+                generated=f'/artifacts/{key}/new-measure/'
+                value['created']={k:copy.deepcopy(created.data[k]) for k in ['measure_id','name','table','definition','expression','outcome','explanation','diagnostics','validation_available']}
+                value['created'].update(url=generated+'report.html',dax=generated+'new-measure.dax',zip=generated+'new-measure.zip',
+                    comparison=generated+'dags/report.html',validation=generated+'validate-total.dax' if created.data['validation_available'] else None,
+                    contexts=generated+'visual-context-queries.zip' if (root/'new-measure/visual-context-queries.zip').is_file() else None)
             self.measure_review=review
             self.change(measure_review=value,project=None,result=None,sessions=[])
         elif action == 'measure-proposal':
@@ -325,13 +341,13 @@ class Studio:
             key,root=self.new_artifact()
             emit(self.report,'measure-proposal','Compare proposed measure',detail='Trace this root expression and retain its full helper chain')
             result=write_measure_proposal(self.model,data['measure'],expression,root/'proposal',graph=self.analysis.graph,
-                                          landing_visual=self.measure_review.data['landing_visual'])
+                                          landing_visuals=self.measure_review.data['landing_visuals'])
             value=self.snapshot()['measure_review']
             url=f'/artifacts/{key}/proposal/'
             value['custom']={'after':expression,'url':url+'report.html','dax':url+'proposed.dax',
                              'validation':url+'validate-total.dax' if result['validation'] else None,
                              'validation_reason':result['validation_reason'],
-                             'landing_queries':url+'landing-queries.zip' if (root/'proposal/landing-queries.zip').is_file() else None}
+                             'landing_queries':url+'visual-context-queries.zip' if (root/'proposal/visual-context-queries.zip').is_file() else None}
             self.change(measure_review=value)
         elif action == 'generate':
             if self.model is None:
