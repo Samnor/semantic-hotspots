@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.16.0/semantic_hotspots-0.16.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.17.0/semantic_hotspots-0.17.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.16.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.17.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -73,6 +73,31 @@ created.write("measure-review")
 ```
 
 
+## Try a complex daily-production chain
+
+```powershell
+python -m semantic_hotspots production-lab --days 364 --sites 6 --products 8 -o daily-production-lab
+```
+
+Open `daily-production-lab/report.html` for the three new measures and their paired DAGs. Open `Showcase.pbip` in Power BI Desktop and **refresh** to load the embedded fictional rows. A single matrix compares each original with its candidate. There are no external source connections. To use Studio, analyze the generated `daily-production.bim`, select **Production rate by period**, **Stock coverage by period**, or **Target variance by period**, then choose **Create new measure**. Visual selection is optional.
+
+The eight-table, 24-measure model starts at **day × site × product**, with an additional budget version on plan rows. Plans sum the visible budget versions; select one version for a single-plan context. Its shared chains include rejects, eligibility filters, workdays, rates, last-observation stock and actual/plan selection by planning period. It contains missing days, negative corrections, zeros, all-BLANK products, budget revisions and an unknown date member. Closing stock deliberately has different last observation dates across sites. Each root is a separate business rule: sum period rates, sum period stock coverage, or sum completed-period actual-minus-plan and future-period remaining target variance. These totals are intentional example rules, not universal KPI definitions.
+
+The rate and stock candidates reduce six static `SUMX` operators to one period iterator; target variance reduces five to one. This is a structural count, **not a measured execution count or speedup**. The generated root specializes only helper paths with actual guarded changes. Every transplanted measure call retains `CALCULATE` context transition; model references are qualified in their original scope. Source helpers stay unchanged. Snapshots and ratios keep their existing aggregation rules. Floating-point and unestablished scalar values retain outer BLANK filters: removing those can change floating-point summation order even when the mathematical sum is unchanged. Expansion is limited to 32 reachable helpers and 50,000 characters, plus parser limits; unsupported paths stay as callbacks.
+
+The new additive rule only collapses `SUMX(VALUES(Fact[Grain]), [Pure sum helper])` or its explicit-context-transition equivalent when the grain and exact numeric sum belong to the same physical table. It rejects floating-point doubles, filtered/ratio/snapshot helpers, enclosing row contexts, and bidirectional/many-to-many relationships. Engine validation remains necessary, including overflow-sensitive values; no universal equivalence proof is claimed. The selected output may get longer while eliminating repeated daily work. Whole-model triage retains bounded local checks; selecting a measure enables helper-path specialization.
+
+Each measure package contains fixed-date total and representative matrix validation queries, including explicit BLANK flags. Run those against the refreshed model before interpreting timings. The public tests also use an independent arithmetic oracle built from source rows and stated business rules; it is not a general DAX emulator. From a source checkout, `python tools/check_production_engine.py daily-production-lab --server localhost:PORT --database CATALOG --adomd-path PATH` runs the finite engine checks against an explicitly selected local catalog. Add `--benchmark` for seven warm client samples only after strict original/candidate equality, BLANK checks and oracle comparisons pass. The original/candidate comparison is exact; a small tolerance is used only between the independent Python floating-point oracle and the engine. The generator itself does not execute these checks or benchmark an engine.
+
+```python
+from semantic_hotspots import create_production_lab, production_model, create_measure
+
+create_production_lab("daily-production-lab", days=364, sites=6, products=8)
+created = create_measure(production_model(), "Production rate by period")
+assert created.data["chain_specialization"]["source_helpers_unchanged"]
+created.write("production-rate-review")
+```
+
 ## Create one new measure
 
 After **Analyze model**:
@@ -84,9 +109,9 @@ After **Analyze model**:
 
 `new-measure.dax` is a measure definition, not a standalone query. The full ZIP includes `preview-query.dax` and `HOW-TO-USE.txt`. The wrapper follows Microsoft’s [DAX query syntax](https://learn.microsoft.com/en-us/dax/dax-queries).
 
-The result is a separately named measure, with a collision-free name and a complete `Name = expression` definition for Power BI Desktop’s New measure editor. It belongs in the indicated table of the same model. Its helper measures and source tables remain dependencies; the generated definition is not a standalone replacement semantic model. The original measure and every helper are unchanged. The downloadable ZIP contains the DAX, a measure JSON object (including the original static format string when present), an offline report, original/new DAGs and available unexecuted validation queries. Dynamic format expressions need separate review.
+The result is a separately named measure, with a collision-free name and a complete `Name = expression` definition for Power BI Desktop’s New measure editor. It belongs in the indicated table of the same model. Its unexpanded helper measures and source tables remain dependencies; the generated definition is not a standalone replacement semantic model. The original measure and every helper are unchanged. The downloadable ZIP contains the DAX, a measure JSON object (including the original static format string when present), an offline report, original/new DAGs and available unexecuted validation queries. Dynamic format expressions need separate review.
 
-The generator prefers the bounded combined guarded rewrite when one exists, otherwise an isolated guarded rewrite. This is a deterministic rule choice, not evidence of correctness or lower cost. If no guarded rewrite matches, it creates an **explicitly labeled unchanged copy**; it never invents an optimization or reports a speedup. A missing root definition blocks creation. Missing helper definitions can still allow an independent local proposal; unresolved/ambiguous references and cycles retain their guards. Incomplete chains retain their graphs but withhold validation probes.
+The generator first prefers a bounded proposal that specializes improved helper paths into the selected root, then a combined local rewrite, then an isolated local rewrite. This is a deterministic rule choice, not evidence of correctness or lower cost. If no guarded rewrite matches, it creates an **explicitly labeled unchanged copy**; it never invents an optimization or reports a speedup. A missing root definition blocks creation. Missing helper definitions can still allow an independent local proposal; unresolved/ambiguous references and cycles retain their guards. Incomplete chains retain their graphs but withhold validation probes.
 
 Optional visuals are matched by explicit value slots bound to the selected measure’s table/name. Helper-only and visual-filter-only references do not count as displayed values. Report/page/title labels identify choices; duplicate labels include stable IDs and dynamic/hidden titles fall back to IDs. **Clear visual contexts** removes all selections. Their axes, filters, drill/total settings and unsupported flags remain separate: one visual’s filters are never intersected with another’s or baked into the new DAX. Supported reviewed contexts export representative baseline/candidate/BLANK-validation queries; partial or unsupported contexts retain diagnostics and withhold their queries. No query is executed by creation.
 
@@ -109,7 +134,7 @@ result = create_measure("model.bim", "Revenue", table="Sales", visuals=visuals)
 
 Matrix specification JSON may include string fields `report_name`, `page_name` and `visual_id` for labels. PBIR imports preserve the report folder name, page display name and literal visual title when available. These labels never determine bindings.
 
-The lower-level root-only proposal review API and CLI remain available:
+The lower-level single-root proposal review API and CLI remain available:
 
 ```powershell
 python -m semantic_hotspots optimize-measure model.bim "Revenue" --table Sales -o revenue-review
@@ -334,7 +359,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.16.0/semantic_hotspots-0.16.0-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.17.0/semantic_hotspots-0.17.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -404,13 +429,15 @@ The M import follows [Microsoft's Csv.Document documentation](https://learn.micr
 
 Version 0.4 adds an optimizer-inspired proposal layer. The ordinary `analyze` report includes **Guarded rewrite proposals** under each measure: before/after DAX, typed partial logical trees, row/filter context annotations, direct dependencies, guard conditions, and replayable isolated or combined edit steps. `rewrite-plan.json` sits beside the report. Existing risk points remain review priorities, not an optimizer cost model.
 
-The initial rule registry is deliberately small:
+The rule registry is deliberately small:
 
 | Rule | Proposed change | Conditions |
 |---|---|---|
 | OPT001 | `SUMX(Sales, Sales[Amount])` → `SUM(Sales[Amount])` | Same physical base table, direct physical numeric column, known type, supported enclosing syntax |
 | OPT002 | `FILTER(FILTER(Sales, p), q)` → `FILTER(Sales, (p) && (q))` | Same physical table; row-local comparisons of compatible columns/literals and Boolean combinations; no measures, calls, arithmetic or context changes inside predicates |
-| OPT003 | `SUMX(FILTER(t, NOT ISBLANK([@score])), [@score])` → `SUMX(t, [@score])` | `t` is a bound table variable; both column references bind to the same stored column; no measure callback or changed predicate |
+| OPT003 | `SUMX(FILTER(t, NOT ISBLANK([@score])), [@score])` → `SUMX(t, [@score])` | `t` is a bound table variable; both column references bind to the same exact numeric stored column; floating-point and unestablished scalar types retain the filter |
+| OPT004 | `SUMX(VALUES(Fact[Day]), [Pure sum])` → `SUM(Fact[Units])` | Context transition, pure exact numeric sum and grain from the same physical table; no outer row context, bidirectional or many-to-many relationships |
+| OPT005 | Specialize improved helper paths into one new root | Complete supported changed paths; explicit CALCULATE per transplanted measure call; qualified model bindings; original helpers unchanged; bounded expansion |
 
 Recognized logical operations include scans, scoped physical/extension columns, measure references, lexical scalar/table variables, literals, parentheses, scalar binary operators, `SUM`, `SUMX`, `FILTER`, `VALUES`, `ADDCOLUMNS`, paired-name `SELECTCOLUMNS`, `COUNTROWS`, `ISEMPTY`, `MAX`/`MIN`, `YEAR`/`DATE`, `SWITCH`, `IF`, Boolean/blank tests, `DIVIDE`, and `CALCULATE`/`REMOVEFILTERS`. Temporary-column DAG references link to explicit definition nodes. Existing rewrites can run inside supported extension expressions without moving their row/filter context. This is **not a full DAX AST/compiler or executable physical planner**. Unknown table schemas, unsupported calls, ambiguous references, cycles, calculation groups, model functions and dynamic root formats retain their guards. Independently guarded root-local rewrites can preserve known-but-undefined helpers and unknown surrounding column types without inferring their behavior. Those proposals remain unvalidated; actual helper definitions are required before comparison queries are exported. TODAY stays live in production and is frozen only in validation queries; NOW and random evaluation remain blocked. No variable hoisting, join reordering, general filter pushdown, automatic pre-aggregation or runtime plan fusion is implemented. The search emits at most 32 isolated proposals and a 16-step bounded fixed-point combination per measure. No timing benefit is inferred: the DAX engine may already normalize the alternatives.
 
@@ -438,7 +465,7 @@ Load and refresh `synthetic-lab/synthetic-model.bim` in a **separate test engine
 python -m semantic_hotspots experiment-run rewrite-experiment --dscmd "C:\Program Files\DAX Studio\dscmd.exe" --server localhost:PORT --database SYNTHETIC_DATABASE --warm 5 --cold 0
 ```
 
-The runner defines a unique **query-scoped alias measure**, leaving the loaded model unchanged. Each candidate changes only the root expression; its original dependencies remain intact. It checks a paired query using engine strict equality (`==`) plus explicit original/candidate `ISBLANK` flags for the scalar total and every configured grouped/filtered scenario. The equality flag also retains groups in which both values are BLANK. A mismatch, failed process, missing output or zero validation rows prevents timing that candidate. All-BLANK coverage is labeled uninformative and also prevents timing.
+The runner defines a unique **query-scoped alias measure**, leaving the loaded model unchanged. Each candidate changes only the output root expression; original helper definitions remain intact. Selected-root proposals can specialize improved helper paths, so the resulting root can depend on fewer helpers. Whole-model scans keep local proposals to bound analysis work. It checks a paired query using engine strict equality (`==`) plus explicit original/candidate `ISBLANK` flags for the scalar total and every configured grouped/filtered scenario. The equality flag also retains groups in which both values are BLANK. A mismatch, failed process, missing output or zero validation rows prevents timing that candidate. All-BLANK coverage is labeled uninformative and also prevents timing.
 
 Passing candidates receive separate original/candidate queries on the same target, with alternating order between scenarios. Omit `--dscmd` to use the direct local ADOMD client. The default clears no cache; `--cold` explicitly requests database-cache clearing. Keep the synthetic database, data, engine settings, hardware and concurrency stable. Warm results after paired validation may benefit from warmed engine caches. Repeat at several row counts, seeds, cardinalities and skews using separate simulation bundles.
 
@@ -647,7 +674,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.16.0.
+MIT licensed. Version 0.17.0.
 
 ## Contributing and data handling
 

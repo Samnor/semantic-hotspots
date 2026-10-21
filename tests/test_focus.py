@@ -37,15 +37,13 @@ class FocusTests(unittest.TestCase):
         self.assertEqual(review.data['validation_status'],'not_run')
         self.assertEqual(review.data['performance_status'],'unknown');self.assertEqual(data,before)
 
-    def test_helpers_are_context_and_no_safe_rewrite_is_not_called_optimal(self):
+    def test_improved_helpers_can_be_specialized_in_one_new_root(self):
         review=review_measure(source(),'Helper consumer')
-        self.assertFalse(review.data['candidates'])
+        self.assertTrue(any(c['chain_specialization'] for c in review.data['candidates']))
         self.assertIn('Chosen',[n.get('name') for n in review.data['original_dag']['nodes']])
-        self.assertTrue(review.data['diagnostics'])
-        self.assertFalse(review_measure(source(),'Opaque').data['candidates'])
+        self.assertTrue(review_measure(source(),'Opaque').data['candidates'])
         with tempfile.TemporaryDirectory() as tmp:
             html=review.write(Path(tmp)/'review')['html'].read_text(encoding='utf-8')
-            self.assertIn('does not establish',html)
             self.assertIn('Full chain and definitions',html)
 
     def test_cached_analysis_selects_one_measure_without_replanning_and_qualifies_duplicates(self):

@@ -60,10 +60,10 @@ class DateControlTests(unittest.TestCase):
                 self.assertIn("MEASURE 'Sales'["+name+"] =",query)
             self.assertNotIn("MEASURE 'Sales'[Other]",query)
 
-    def test_missing_known_helper_kept_opaque_without_blocking_local_stored_filter_rule(self):
-        text=stored('[Empty]');data=source(text);data['model']['tables'][0]['measures'].append({'name':'Empty'})
+    def test_missing_known_helper_kept_opaque_without_blocking_independent_filter_fusion(self):
+        text=stored('[Empty]')+' + COUNTROWS(FILTER(FILTER(Sales,Sales[Category]=="A"),Sales[Category]<>"B"))';data=source(text);data['model']['tables'][0]['measures'].append({'name':'Empty'})
         result=create_measure(data,'Total')
-        self.assertEqual(result.data['expression'],text.replace('SUMX(keptRows,[@n])','SUMX(scored, [@n])'))
+        self.assertEqual(result.data['expression'],text.replace('FILTER(FILTER(Sales,Sales[Category]=="A"),Sales[Category]<>"B")','FILTER(Sales, (Sales[Category]=="A") && (Sales[Category]<>"B"))'))
         self.assertFalse(result.data['validation_available']);self.assertTrue(result.data['pending_helpers'])
         self.assertTrue(result.data['guard_evidence']['helper_callbacks_preserved'])
         self.assertFalse(result.data['guard_evidence']['missing_helper_definitions_assumed'])
@@ -73,7 +73,7 @@ class DateControlTests(unittest.TestCase):
             self.assertFalse((root/'validate-total.dax').exists());self.assertFalse((root/'validation-dates').exists())
 
     def test_local_rewrite_works_with_unknown_surrounding_column_types(self):
-        data=source(stored('IF(Sales[Amount]>0,[Empty],BLANK())'))
+        data=source(stored('IF(Sales[Amount]>0,[Empty],BLANK())')+' + COUNTROWS(FILTER(FILTER(Sales,Sales[Category]=="A"),Sales[Category]<>"B"))')
         data['model']['tables'][0]['columns'][0].pop('dataType')
         data['model']['tables'][0]['measures'].append({'name':'Empty'})
         result=create_measure(data,'Total').data

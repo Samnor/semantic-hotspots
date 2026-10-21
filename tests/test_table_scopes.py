@@ -28,7 +28,7 @@ class TableScopeTests(unittest.TestCase):
         self.assertFalse(info.unresolved);self.assertFalse(info.reference_blockers)
         result=create_measure(model,'Total').data
         self.assertEqual(result['outcome'],'rewritten')
-        self.assertEqual(result['expression'],text.replace('SUMX(Sales,Sales[Amount])','SUM(Sales[Amount])').replace('SUMX(keptRows,[@score])','SUMX(scored, [@score])'))
+        self.assertEqual(result['expression'],text.replace('SUMX(Sales,Sales[Amount])','SUM(Sales[Amount])'))
         self.assertTrue(result['validation_available'])
         self.assertEqual(model,before)
         for key in ['original','proposed']:
@@ -168,7 +168,7 @@ class TableScopeTests(unittest.TestCase):
     def test_blank_only_filter_rule_requires_same_stored_column(self):
         prefix='VAR t=ADDCOLUMNS(Sales,"@n",Sales[Amount]) RETURN '
         text=prefix+'SUMX(FILTER(t,NOT ISBLANK([@n])),[@n])'
-        result=create_measure(source(text),'Total').data
+        result=create_measure(source(text,datatype='int64'),'Total').data
         self.assertEqual(result['expression'],prefix+'SUMX(t, [@n])')
         self.assertEqual(result['steps'][0]['rule'],'OPT003')
         self.assertTrue(result['validation_available'])

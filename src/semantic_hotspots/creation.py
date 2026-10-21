@@ -91,7 +91,7 @@ class CreatedMeasure:
             links+=' · <a href="date-controls.json">Fixed-date validation settings</a>'
         if d['validation_available']:links+=' · <a href="validate-total.dax" download>Total validation query</a>'
         if (root/'visual-context-queries.zip').is_file():links+=' · <a href="visual-context-queries.zip" download>Visual contexts and queries</a>'
-        (root/'report.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New measure</title><style>body{font:16px/1.6 system-ui;margin:40px auto;padding:0 20px;max-width:950px;color:#18333d}pre{background:#f2f6f5;padding:20px;white-space:pre-wrap;overflow-wrap:anywhere}a{color:#087568}</style><h1>'+esc(d['name'])+'</h1><p>'+esc(d['explanation'])+'</p><pre>'+esc(d['definition'])+'</pre><p>'+links+'</p><p>Create a new measure in table '+esc(d['table'])+' and paste the definition above. The original model and helper definitions are unchanged.</p><p>For DAX Studio or Power BI DAX query view, use preview-query.dax. The measure definition alone is not a query. This preview returns one scalar total without saving a measure; it is not a correctness comparison or benchmark.</p><p>'+str(len(d['visual_contexts']))+' selected visual contexts. Their filters remain separate and are not baked into the new expression. Helpers remain dependencies in the same model.</p><p>Correctness: not tested · Performance: unknown</p><ul>'+''.join('<li>'+esc(w)+'</li>' for w in d['diagnostics'])+'</ul>',encoding='utf-8')
+        (root/'report.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New measure</title><style>body{font:16px/1.6 system-ui;margin:40px auto;padding:0 20px;max-width:950px;color:#18333d}pre{background:#f2f6f5;padding:20px;white-space:pre-wrap;overflow-wrap:anywhere}a{color:#087568}</style><h1>'+esc(d['name'])+'</h1><p>'+esc(d['explanation'])+'</p><pre>'+esc(d['definition'])+'</pre><p>'+links+'</p><p>Create a new measure in table '+esc(d['table'])+' and paste the definition above. The original model and helper definitions are unchanged.</p><p>For DAX Studio or Power BI DAX query view, use preview-query.dax. The measure definition alone is not a query. This preview returns one scalar total without saving a measure; it is not a correctness comparison or benchmark.</p><p>'+str(len(d['visual_contexts']))+' selected visual contexts. Their filters remain separate and are not baked into the new expression. Unexpanded helpers remain dependencies in the same model. Expanded paths carry guarded changes inside the new root; original helpers remain unchanged.</p><p>Correctness: not tested · Performance: unknown</p><ul>'+''.join('<li>'+esc(w)+'</li>' for w in d['diagnostics'])+'</ul>',encoding='utf-8')
         with zipfile.ZipFile(root/'new-measure.zip','w',zipfile.ZIP_DEFLATED) as z:
             for path in sorted(root.rglob('*')):
                 if path.is_file() and path.name!='new-measure.zip':z.write(path,path.relative_to(root).as_posix())
@@ -104,7 +104,7 @@ def _create_from_review(model, review, *, progress=None):
     emit(progress,'create-measure','Create new measure',detail=owner.qualified_name)
     candidates=d['candidates']
     # Prefer the bounded combination; this is rule coverage, never a timing estimate.
-    chosen=max(candidates,key=lambda c:(c['combined'],len(c['steps']),c['id'])) if candidates else None
+    chosen=max(candidates,key=lambda c:(bool(c.get('chain_specialization')),c['combined'],len(c['steps']),c['id'])) if candidates else None
     expression=chosen['after'] if chosen else owner.expression
     created=Entity('measure',owner.table,_new_name(model,owner),expression,metadata=copy.deepcopy(owner.metadata))
     other=copy.deepcopy(model);other.add(created)
@@ -125,6 +125,9 @@ def _create_from_review(model, review, *, progress=None):
             if issue['message'] not in diagnostics:diagnostics.append(issue['message'])
         diagnostics.append('Validation queries need the actual helper definitions, complete reference binding, and controllable date evaluation. See the specific requirements above.')
     explanation = ('Created a new measure with '+str(len(chosen['steps']))+(' guarded simplification' if len(chosen['steps'])==1 else ' guarded simplifications')+'. Validate its results and performance before use.' if chosen else 'Created an unchanged copy. No supported guarded rewrite matched; no performance improvement is claimed.')
+    if chosen and chosen.get('chain_specialization'):
+        local_count=sum(step['rule']!='OPT005' for step in chosen['steps'])
+        explanation=('Created one new measure by specializing improved helper paths, with '+str(local_count)+' guarded local changes across those paths. Original helper definitions are unchanged. Validate results and performance before use.')
     reason_kind = ('rewritten' if chosen else 'incomplete_dependencies' if not complete else
                    'unsupported_syntax_or_semantics' if not comparison['original']['logical_subset_validated'] else
                    'guard_blocked' if any(not message.startswith('No guarded rule matched') for message in d['diagnostics']) else 'no_matching_rule')
@@ -144,9 +147,10 @@ def _create_from_review(model, review, *, progress=None):
         'original_name':owner.name,'measure_id':created.id,'name':created.name,'table':created.table,
         'expression':expression,'definition':created.name+' =\n'+expression+'\n','measure_object':measure_object,
         'outcome':'rewritten' if chosen else 'unchanged_copy','selected_candidate_id':chosen['id'] if chosen else None,
-        'selection_basis':'Bounded combined guarded rewrite, otherwise an isolated guarded rewrite; no timing-based selection.',
+        'selection_basis':'Bounded improved-helper specialization, otherwise a combined or isolated local rewrite; no timing-based selection.',
         'explanation':explanation,'reason_kind':reason_kind,
         'steps':copy.deepcopy(chosen['steps']) if chosen else [],'visual_contexts':contexts,
+        'chain_specialization':copy.deepcopy(chosen.get('chain_specialization')) if chosen else None,
         'date_controls':copy.deepcopy(controls),'guard_evidence':copy.deepcopy(chosen.get('guard_evidence')) if chosen else None,
         'pending_helpers':copy.deepcopy(chosen.get('pending_helpers',[])) if chosen else [],
         'dag_comparison':comparison,'diagnostics':diagnostics,'dependency_issues':blockers,'validation_available':complete,

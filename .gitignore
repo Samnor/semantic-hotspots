@@ -56,3 +56,7 @@ showcase-results/
 new-measure/
 new-measure-contexts/
 smoke-created-measure/
+
+# Generated daily-production comparison
+daily-production-lab/
+smoke-production/

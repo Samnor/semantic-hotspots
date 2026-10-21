@@ -97,7 +97,8 @@ class CreateMeasureTests(unittest.TestCase):
         self.assertEqual(contexts,frozen)
 
     def test_no_guarded_match_is_an_explicit_unchanged_copy_with_helpers(self):
-        result=create_measure(source(),'Helper consumer').data
+        data=source();data['model']['tables'][0]['measures'][0]['expression']='SUM(Sales[Amount])'
+        result=create_measure(data,'Helper consumer').data
         self.assertEqual(result['outcome'],'unchanged_copy');self.assertEqual(result['expression'],'[Chosen] + 1')
         self.assertIn('No supported guarded rewrite',result['explanation'])
         self.assertIn('Chosen',[n.get('name') for n in result['dag_comparison']['proposed']['nodes']])

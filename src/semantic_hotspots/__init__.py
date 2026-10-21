@@ -34,3 +34,6 @@ from .comparison import computation_dag, compare_measure_dags, write_dag_compari
 from .focus import MeasureReview, review_measure
 from .creation import CreatedMeasure, create_measure
 from .helpers import HelperRecovery, helper_requirements, recover_helpers, recover_helpers_from_desktop
+
+from .production_lab import create_production_lab, production_model, production_data
+__all__ += ['create_production_lab','production_model','production_data']

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.0
+
+- Tighten OPT003 to exact numeric stored columns after a real-engine floating-point counterexample; retain BLANK filters for double or unestablished scalar values.
+- Add guarded OPT004 to collapse a context-transitioned additive grain iterator over exact same-table sums; retain nonadditive, floating-point and relationship guards.
+- Add bounded OPT005 helper-path specialization for a selected root. Preserve implicit context transition with explicit CALCULATE, qualify moved model references, and leave every original helper unchanged. Carry local-rule evidence and expanded-helper identities into the new-measure package.
+- Add `production-lab` and Python APIs for coherent fictional daily actual/plan data, eight tables, 24 measures, three long-chain proposals, paired DAGs, fixed-date validation packages and one Power BI comparison matrix.
+- Exercise missing observations, all-BLANK and empty slices, zeros, corrections, budget versions, snapshot grain and nonadditive totals with an independent arithmetic oracle.
+
 ## 0.16.0
 
 - Preserve live TODAY() in production proposals; export fixed-date query-scoped overrides for both paths and date-dependent helper measures, including per-date visual workloads and synthetic rewrite experiments.

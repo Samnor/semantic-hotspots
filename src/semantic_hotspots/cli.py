@@ -170,8 +170,18 @@ def main(argv: list[str] | None = None) -> int:
     studio.add_argument('--no-browser', action='store_true')
     setup = commands.add_parser('engine-setup', help='Explicitly download/check/install the pinned official x64 Windows ADOMD client')
     setup.add_argument('-o', '--output', type=Path, help='Fresh install directory; default is the per-user local cache')
+    production=commands.add_parser('production-lab',help='Create a fictional daily-production model, three complex root proposals, DAGs and one Power BI matrix')
+    production.add_argument('-o','--output',type=Path,default=Path('daily-production-lab'))
+    production.add_argument('--days',type=_positive,default=112)
+    production.add_argument('--sites',type=_positive,default=3)
+    production.add_argument('--products',type=_positive,default=4)
     args = parser.parse_args(argv)
     try:
+        if args.command == 'production-lab':
+            from .production_lab import create_production_lab
+            output=create_production_lab(args.output,days=args.days,sites=args.sites,products=args.products)
+            print(f'Production lab: {output}\nOpen report.html or refresh Showcase.pbip in Power BI Desktop. No engine execution or speedup is implied.')
+            return 0
         if args.command == 'engine-setup':
             from .client_setup import install_adomd
             print(f'Official client installed: {install_adomd(args.output)}')

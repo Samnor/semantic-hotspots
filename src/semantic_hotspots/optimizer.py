@@ -34,9 +34,23 @@ RULES = {
     'OPT003': {'title': 'Remove a blank-only filter from a stored table SUMX',
                'preconditions': ['The FILTER input is a lexically bound table variable, directly or through a filtered variable',
                                  'The predicate is exactly NOT ISBLANK of the column summed by SUMX',
-                                 'Both references bind to the same physical or extension column; no measure reevaluation',
+                                 'Both references bind to the same exact numeric physical or extension column; no measure reevaluation',
+                                 'Floating-point or unestablished scalar types retain the filter to avoid changing summation order',
                                  'Only the SUMX input changes; the table binding and other consumers are retained'],
                'source_url': 'https://learn.microsoft.com/en-us/dax/sumx-function-dax'},
+    'OPT004': {'title': 'Collapse an additive same-table grain iterator',
+               'preconditions': ['SUMX iterates VALUES of one physical column without an enclosing row context',
+                                 'The body is a context-transitioned SUM of an exact numeric column from that same physical table',
+                                 'Only pure aggregate/forwarding helpers are resolved; no filters, ratios, snapshots, doubles or dynamic model context',
+                                 'No bidirectional or many-to-many relationships; finite engine validation is required, including overflow-sensitive data'],
+               'source_url': 'https://learn.microsoft.com/en-us/dax/calculate-function-dax'},
+    'OPT005': {'title': 'Specialize improved helpers into one new measure',
+               'preconditions': ['Complete, acyclic, supported helper definitions on the changed path',
+                                 'Only paths carrying an actual guarded simplification are expanded',
+                                 'Every replaced measure callback retains explicit CALCULATE context transition',
+                                 'Model references are qualified to prevent caller scope capture; original helpers remain unchanged',
+                                 'Bounded expansion; no calculation groups, functions, dynamic formatting or volatile helpers'],
+               'source_url': 'https://learn.microsoft.com/en-us/dax/calculate-function-dax'},
 }
 
 
@@ -399,6 +413,29 @@ def _predicate(node, table, model):
     return types[0] in {'number', 'string'} and types[0] == types[1]
 
 
+def _additive_column(node,model,seen=frozenset()):
+    """Resolve only pure exact-column sums, never an arbitrary helper formula."""
+    node=_plain(node)
+    if node.operation=='measure':
+        if node.target in seen or len(seen)>=32:return None
+        entity=model.entities[node.target]
+        if not entity.expression:return None
+        helper,issues=logical_plan(entity.expression,model,entity)
+        if issues:return None
+        return _additive_column(helper,model,seen|{node.target})
+    if node.operation=='CALCULATE' and len(node.children)==1:
+        return _additive_column(node.children[0],model,seen)
+    if node.operation=='SUM' and len(node.children)==1:
+        column=_plain(node.children[0])
+    elif node.operation=='SUMX' and len(node.children)==2:
+        table,column=map(_plain,node.children)
+        if table.operation!='scan' or not _physical(table,model) or column.table!=table.table:return None
+    else:return None
+    if (column.operation=='column' and column.result_type in {'int64','decimal','fixeddecimal','currency'}
+            and _physical(column,model)):return column
+    return None
+
+
 def _matches(tree, text, model):
     matches = []
     definitions = {}
@@ -409,6 +446,16 @@ def _matches(tree, text, model):
     def visit(node):
         if node.operation == 'SUMX':
             table, column = map(_plain, node.children)
+            if (not node.row_context and table.operation=='VALUES' and len(table.children)==1
+                    and all(r.cross_filter.casefold() in {'onedirection','single'}
+                            and r.from_cardinality.casefold()!='manytomany' and r.to_cardinality.casefold()!='many'
+                            for r in model.relationships)):
+                grain=_plain(table.children[0])
+                transitioned=(column.operation=='measure' or (column.operation=='CALCULATE' and len(column.children)==1))
+                additive=_additive_column(column,model) if transitioned else None
+                if (grain.operation=='column' and _physical(grain,model) and additive
+                        and additive.table==grain.table):
+                    matches.append(('OPT004',node.start,node.end,'SUM('+model.entities[additive.target].qualified_name+')'))
             if (table.operation == 'scan' and column.operation == 'column'
                     and column.table == table.table and column.result_type in _NUMERIC
                     and _physical(table, model) and _physical(column, model)):
@@ -423,7 +470,8 @@ def _matches(tree, text, model):
                 if (base.operation == 'variable_reference' and base.result_type == 'table'
                         and (table.operation != 'variable_reference'
                              or table.lexical_bindings.get(base.value.casefold()) == base.target)
-                        and column.operation in {'column', 'extension_column'} and tested
+                        and column.operation in {'column', 'extension_column'}
+                        and column.result_type in {'int64','decimal','fixeddecimal','currency'} and tested
                         and tested.operation == column.operation and tested.target == column.target):
                     matches.append(('OPT003', node.start, node.end,
                                     f'SUMX({text[base.start:base.end]}, {text[column.start:column.end]})'))
@@ -496,6 +544,18 @@ def _preserved_callbacks(before, after):
     return references(before)==references(after)
 
 
+def _replay_local(before,after,steps,model,owner):
+    current=before
+    for step in steps:
+        tree,issues=logical_plan(current,model,owner)
+        if issues and not _type_gap_only(tree):return False
+        start,end=step['source_span']
+        expected=(step['rule'],start,end,step['after'])
+        if current[start:end]!=step['before'] or expected not in _matches(tree,current,model):return False
+        current=current[:start]+step['after']+current[end:]
+    return current==after
+
+
 def _digest(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
@@ -526,7 +586,7 @@ class RewritePlan:
         return {'json': root/'rewrite-plan.json', 'html': root/'rewrites.html'}
 
 
-def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure=None, table=None):
+def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure=None, table=None, include_helper_rewrites=True):
     """Propose isolated edits and a bounded fixed-point combination per measure."""
     model = parse_model(source) if isinstance(source, dict) else source if isinstance(source, Model) else load_model(source)
     graph = graph or DependencyGraph(model, progress=progress)
@@ -574,15 +634,17 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
             notes.extend(issue['message'] for issue in pending_helpers)
             notes.append('Missing helpers remain opaque and unchanged. Independent local proposals are allowed, but validation queries require their actual definitions first.')
         candidates = []
-        def candidate(after, steps, combined=False):
+        def candidate(after, steps, combined=False, specialization=None):
             if after == before or any(c['after'] == after for c in candidates):
                 return
             after_tree, issues = logical_plan(after, model, measure)
-            if (issues and not _type_gap_only(after_tree)) or not _preserved_callbacks(tree,after_tree):
+            callbacks_preserved=_preserved_callbacks(tree,after_tree)
+            if issues and not _type_gap_only(after_tree):
                 return
+            if not specialization and not callbacks_preserved and not _replay_local(before,after,steps,model,measure):return
             def today_calls(text):
                 return [(text[c.start:c.end],c.ancestors) for c in Resolver(model).scan(text,measure).calls if c.name=='TODAY']
-            if today_calls(before)!=today_calls(after):return
+            if not specialization and today_calls(before)!=today_calls(after):return
             from .comparison import compare_measure_dags
             comparison = compare_measure_dags(model, measure.id, proposed_expression=after, graph=graph)
             candidates.append({'id': _digest(measure.id+'\x00'+before+'\x00'+after)[:20],
@@ -595,8 +657,10 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
                                'performance_status': 'unknown', 'predicted_speedup': None,
                                'validation_available': comparison['original']['dependency_complete'] and comparison['proposed']['dependency_complete'],
                                'pending_helpers': [issue['owner_id'] for issue in pending_helpers],
-                               'guard_evidence': {'scope':'root-local structural proposal; not an equivalence proof',
-                                   'helper_callbacks_preserved':True,'today_calls_preserved':True,
+                               'chain_specialization':specialization,
+                               'guard_evidence': {'scope':'guarded helper-path specialization; not an equivalence proof' if specialization else 'root-local structural proposal; not an equivalence proof',
+                                   'helper_callbacks_preserved':callbacks_preserved,'today_calls_preserved':today_calls(before)==today_calls(after),
+                                   'guarded_aggregate_callback_replacement':not callbacks_preserved and not specialization,
                                    'missing_helper_definitions_assumed':False},
                                'dag_comparison': comparison})
         if not diagnostics:
@@ -616,6 +680,11 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
                 candidate(current, steps, True)
             if len(steps) == 16:
                 diagnostics.append('Combined search reached its 16-step bound; further rewrites may exist.')
+            if include_helper_rewrites and len(measures)==1 and not pending_helpers:
+                from .chain_optimizer import specialize_helpers
+                specialized=specialize_helpers(model,graph,measure,current,steps)
+                if specialized:
+                    candidate(specialized['expression'],specialized['steps'],True,specialized['evidence'])
         output.append({'measure_id': measure.id, 'measure': measure.qualified_name,
                        'logical_before': tree.to_dict(), 'diagnostics': diagnostics+notes,
                        'affected_downstream_measures': [m.id for m in model.measures if m.id != measure.id and graph.mask(m.id) & (1 << graph.index[measure.id])],

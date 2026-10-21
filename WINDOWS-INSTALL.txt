@@ -1,11 +1,11 @@
-semantic-hotspots 0.16.0
+semantic-hotspots 0.17.0
 Requires Python 3.10 or later.
 
 Create a virtual environment:
   python -m venv .venv
 
 Install the universal wheel:
-  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.16.0/semantic_hotspots-0.16.0-py3-none-any.whl"
+  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.17.0/semantic_hotspots-0.17.0-py3-none-any.whl"
 
 Check the installation:
   .\.venv\Scripts\python.exe -m semantic_hotspots --version
@@ -60,8 +60,17 @@ For the one-matrix Power BI showcase, open powerbi-showcase\Showcase.pbip in a c
 Parsing, analysis and generation have no runtime dependencies. Actual DAX benchmarks require a separately installed engine. DAX Studio is optional.
 
 For direct local engine queries, install the optional client extra:
-  python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.16.0/semantic_hotspots-0.16.0-py3-none-any.whl"
+  python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.17.0/semantic_hotspots-0.17.0-py3-none-any.whl"
   python -m semantic_hotspots engine-sessions
   python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 
 Use your venv's python executable. Open/refresh the intended synthetic model first, then explicitly choose the listed server and database. Use python -m semantic_hotspots engine-setup to explicitly download and checksum-verify the pinned official x64 .NET Framework client, or supply --adomd-path to an existing trusted SDK. A Core DLL needs --dotnet-runtime coreclr and a compatible installed .NET runtime. Direct mode currently supports local Windows endpoints, elapsed client timings and warm iterations. Server CPU/FE/SE are not measured. The new guided runner is covered by mocked orchestration tests; see README for the bounded prior Desktop test and remaining integration limits.
+
+Try complex daily-production measures with source-free data:
+  .\.venv\Scripts\python.exe -m semantic_hotspots production-lab --days 364 --sites 6 --products 8 -o daily-production-lab
+
+Open daily-production-lab\report.html for the proposed measures and paired DAGs.
+Open daily-production-lab\Showcase.pbip and refresh in Desktop for one comparison
+matrix. To use Studio, analyze daily-production-lab\daily-production.bim and pick
+Production rate by period, Stock coverage by period, or Target variance by period.
+The generator creates proposals and validation queries; it does not execute them.

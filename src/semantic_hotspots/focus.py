@@ -1,4 +1,4 @@
-"""Review root-only measure proposals without a matrix or source-model edits."""
+"""Review single-root measure proposals without a matrix or source-model edits."""
 from __future__ import annotations
 
 import copy
@@ -60,7 +60,7 @@ class MeasureReview:
         diagnostics=''.join('<li>'+esc(d)+'</li>' for d in data['diagnostics'])
         page=('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
               '<title>Optimize one measure</title><style>'+_CSS+DAG_CSS+'</style><main><h1>Optimize one measure</h1><h2>'+esc(data['measure'])+'</h2>'
-              '<p>Only this measure’s proposed expression changes. Helper measures and source tables remain context. No source model is edited and no DAX is executed.</p>'
+              '<p>Only this measure’s proposed expression changes. Supported improved helper paths may be specialized into this root; original helper definitions and source tables remain unchanged. No source model is edited and no DAX is executed.</p>'
               +('<h3>Optional landing visual: '+esc(landing['title'])+'</h3><p>Its axes, filters and totals are retained; displayed values target this measure only. Queries are representative contexts, not the exact rendered visual query.</p><p><a href="landing-visual.json">Landing context and grain review</a></p>' if landing else '<p>'+str(len(landings))+' optional visual contexts selected. <a href="visual-contexts.json">Inspect contexts</a></p>' if landings else '<p>No landing visual selected. Measure review remains independent of matrices.</p>')+
               '<h3>Original DAX</h3><pre>'+esc(data['expression'] or 'Definition missing')+'</pre><p><a href="original.dax" download>Original DAX</a> · <a href="original.dag.json">Original DAG JSON</a> · <a href="original.txt">Full chain and definitions</a></p>'
               '<h3>Original query dependency view</h3><div class="dag-diagram">'+_svg(data['original_dag'],data['original_dag']['query_time_node_ids'])+'</div>'
@@ -163,7 +163,7 @@ def _landing_context(model, owner, spec, analysis, progress):
 
 
 def review_measure(source, measure, *, table=None, analysis=None, progress=None, landing_matrix=None, landing_matrices=None, validation_dates=None):
-    """Select exactly one root for proposals; include helpers only as lineage.
+    """Select one output root, optionally specializing improved helper paths.
 
     Reusing an analysis requires its same unmodified model instance. No measure
     expression is changed, and no correctness or performance claim is made.
@@ -177,6 +177,10 @@ def review_measure(source, measure, *, table=None, analysis=None, progress=None,
     if analysis is not None and analysis.rewrite_plan is not None:
         row=next((r for r in analysis.rewrite_plan.measures if r['measure_id']==owner.id),None)
         if row is None:row=plan_rewrites(model,graph=graph,measure=owner.id,progress=progress).measures[0]
+        elif any(model.entities[n].kind=='measure' for n in graph.dependency_ids(owner.id)):
+            # Whole-model scans retain bounded local proposals. A selected root
+            # also gets a bounded attempt to specialize improved helper paths.
+            row=plan_rewrites(model,graph=graph,measure=owner.id,progress=progress).measures[0]
     else:
         row=plan_rewrites(model,graph=graph,measure=owner.id,progress=progress).measures[0]
     original=computation_dag(model,owner.id,graph=graph)
@@ -194,7 +198,7 @@ def review_measure(source, measure, *, table=None, analysis=None, progress=None,
         if landings:c['dag_comparison']['context']={'landing_visuals':[c['spec'] for c in landings],'selected_measure_id':owner.id}
     diagnostics=list(row['diagnostics'])
     if not candidates and not diagnostics:
-        diagnostics.append('No guarded rule matched this root expression. Helpers are inspected as dependencies, not automatically rewritten. No timing or optimality conclusion follows.')
+        diagnostics.append('No guarded rule matched this root or its supported helper paths. No timing or optimality conclusion follows.')
     alias='__sh_focus_'+hashlib.sha256(owner.id.encode()).hexdigest()[:20]
     names={e.name.casefold() for e in model.entities.values()}
     while alias.casefold() in names:alias+='x'
