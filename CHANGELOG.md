@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0
+
+- Bind table variables and physical/temporary row columns through VALUES, ADDCOLUMNS, paired-name SELECTCOLUMNS, FILTER and SUMX. Keep lexical lifetimes, row/filter contexts, source spans and projected schemas explicit.
+- Link temporary-column uses to their defining expressions in original/new DAGs; do not infer physical lineage for added columns.
+- Apply existing guarded rewrites inside recognized extension expressions. Add OPT003 for a blank-only filter before SUMX over the same stored column of a table variable.
+- Recognize ISEMPTY, MAX/MIN, YEAR/DATE, SWITCH and TODAY structure. Date-dependent chains, unknown helpers/schemas and ambiguous references retain their guards; no speedup is inferred.
+
 ## 0.14.2
 
 - Label the Power BI Desktop measure definition separately from a DAX Studio query preview.
