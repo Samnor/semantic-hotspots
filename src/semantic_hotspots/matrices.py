@@ -517,15 +517,20 @@ class MatrixAnalysis:
         return {'json':root/'matrices.json','html':root/'report.html','specs':root/'matrix-specs.json'}
 
 
-def analyze_matrices(source,matrices,*,benchmark=None):
+def analyze_matrices(source,matrices,*,benchmark=None,analysis=None,progress=None):
     from .analyzer import analyze
+    from .progress import emit
     model=source if isinstance(source,Model) else parse_model(source) if isinstance(source,dict) else load_model(source)
     specs=load_matrices(matrices)
-    analysis=analyze(model); by_id={r['id']:r for r in analysis.ranked}
+    if analysis is not None and analysis.model is not model:
+        raise ModelError('Reused analysis must belong to the same unmodified model instance')
+    analysis=analysis or analyze(model,progress=progress); by_id={r['id']:r for r in analysis.ranked}
     fingerprint=_hash([[(e.id,e.expression,_type(e)) for e in sorted(model.entities.values(),key=lambda e:e.id)],
                        [asdict(r) for r in model.relationships]])
     output=[]; workloads=[]
-    for spec in specs:
+    emit(progress, 'matrices', 'Review matrix grains', completed=0, total=len(specs), unit='matrices')
+    for i,spec in enumerate(specs,1):
+        emit(progress, 'matrices', 'Review matrix grains', completed=i-1, total=len(specs), unit='matrices', detail=spec.title)
         diagnostics=list(spec.unsupported); values=[]; filters=[]
         def measure(pair):
             try:return model.measure(pair[1],pair[0]).id
@@ -567,6 +572,7 @@ def analyze_matrices(source,matrices,*,benchmark=None):
                        'measure_findings':[copy.deepcopy(by_id[n]) for n in roots],
                        'grain_advice':grain,'diagnostics':list(dict.fromkeys(diagnostics)),
                        'workload_ids':[w['id'] for w in queries],'highest_observed_mean_ms':None,'benchmark_evidence':[]})
+        emit(progress, 'matrices', 'Review matrix grains', completed=i, total=len(specs), unit='matrices', detail=spec.title)
     output.sort(key=lambda r:(r['priority'] is None,-(r['priority'] or 0),r['id']))
     result=MatrixAnalysis(output,workloads,model.name,[
         'Static matrix priority is the maximum known value/filter measure review score, not summed cost or a cell-count multiplier.',

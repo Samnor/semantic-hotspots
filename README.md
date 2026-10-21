@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.9.0/semantic_hotspots-0.9.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.9.1/semantic_hotspots-0.9.1-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.9.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.9.1"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -33,6 +33,8 @@ python -m semantic_hotspots studio --workspace .
 ```
 
 The command opens a local browser interface. Select a PBIP, BIM or TMDL model within your workspace, or click **Try synthetic demo**; the demo is included in the wheel. You can browse an adjacent PBIR report, load existing matrix specifications, or build a matrix by selecting its rows, columns and measures. Imported PBIR contexts require explicit review; unsupported filters, roles and visual behavior remain blockers.
+
+During analysis, a persistent activity panel shows the actual stage, current measure/object, completed-item counts where known, elapsed time and completed stages. Model reading, dependency tracing, rule/ranking review, rewrite checks, matrix grain review and report writing have separate checkpoints. A responsive Studio with no new work checkpoint is distinguished from a lost browser connection. Remaining time is unknown; no overall percentage or ETA is fabricated. Completion and failures remain visible, with a link to findings or an analysis retry. Matrix eligibility checks reuse the same request’s analysis instead of repeatedly reanalyzing every measure.
 
 Studio walks through ranked findings, proposed summary grains, one-page comparison generation and validation. Download the whole generated ZIP, or use **Open in Power BI Desktop** on Windows. Opening and refreshing remain explicit Desktop steps. Then find the loaded models, choose the comparison using the matching-definition hint, and click **Validate, then benchmark**. Ports, query filenames and CSV flags are handled by the workflow. A matching hint does not auto-select or fully attest a loaded model.
 
@@ -257,7 +259,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.9.0/semantic_hotspots-0.9.0-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.9.1/semantic_hotspots-0.9.1-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -567,7 +569,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.9.0.
+MIT licensed. Version 0.9.1.
 
 ## Contributing and data handling
 

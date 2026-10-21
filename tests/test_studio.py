@@ -115,5 +115,60 @@ class StudioTests(unittest.TestCase):
         self.assertTrue(state['sessions'][0]['models'][0]['matches_project'])
         self.assertIsNone(state['result'])
 
+    def test_progress_checkpoints_are_observed_work_and_elapsed_time_freezes(self):
+        studio=self.server.studio;entered=threading.Event();release=threading.Event()
+        self.addCleanup(release.set)
+        now=[10.0]
+        def work(action,data):
+            now[0]=12
+            studio.report({'stage':'rewrites','label':'Check rewrite proposals',
+                           'completed':2,'total':10,'unit':'measures','detail':'Fictional measure'})
+            entered.set();release.wait(10)
+        with patch('semantic_hotspots.studio.time.monotonic',side_effect=lambda:now[0]),patch.object(studio,'dispatch',side_effect=work):
+            worker=studio.start('inspect',{})
+            self.assertTrue(entered.wait(2))
+            with self.assertRaises(ModelError):studio.start('demo',{})
+            now[0]=17
+            snapshot=studio.snapshot();op=snapshot['operation']
+            self.assertTrue(snapshot['busy']);self.assertEqual(op['completed'],2)
+            self.assertEqual(op['elapsed_seconds'],7);self.assertEqual(op['stage_elapsed_seconds'],5)
+            self.assertEqual(op['seconds_since_update'],5)
+            self.assertEqual(next(s for s in op['stages'] if s['id']=='load')['status'],'completed')
+            snapshot['operation']['completed']=9
+            self.assertEqual(studio.snapshot()['operation']['completed'],2)
+            now[0]=19;release.set();worker.join(2);self.assertFalse(worker.is_alive())
+            now[0]=50
+            finished=studio.snapshot()
+            self.assertFalse(finished['busy']);self.assertEqual(finished['operation']['status'],'completed')
+            self.assertEqual(finished['operation']['elapsed_seconds'],9)
+            self.assertIn('Analysis complete',finished['operation']['message'])
+
+    def test_failure_preserves_stage_and_new_attempt_resets_operation(self):
+        studio=self.server.studio
+        with patch.object(studio,'dispatch',side_effect=ModelError('Fictional input is missing')):
+            worker=studio.start('inspect',{});worker.join(2)
+        failed=studio.snapshot();first=failed['operation']['id']
+        self.assertFalse(failed['busy']);self.assertEqual(failed['operation']['status'],'failed')
+        self.assertEqual(failed['operation']['stages'][0]['status'],'failed')
+        self.assertIn('Fictional input is missing',failed['error'])
+        self.assertIsNone(failed['operation']['total'])
+        worker=studio.start('demo',{});worker.join(10)
+        self.assertFalse(worker.is_alive());done=studio.snapshot()
+        self.assertIsNone(done['error']);self.assertNotEqual(first,done['operation']['id'])
+        self.assertEqual(done['operation']['status'],'completed')
+        self.assertTrue(all(s['status']=='completed' for s in done['operation']['stages']))
+        self.assertEqual(done['operation']['inventory']['measures'],len(studio.model.measures))
+
+    def test_analysis_and_matrix_guards_reuse_one_request_analysis(self):
+        from semantic_hotspots.analyzer import analyze
+        studio=self.server.studio
+        with patch('semantic_hotspots.studio.analyze',wraps=analyze) as inspect, \
+             patch('semantic_hotspots.analyzer.analyze',side_effect=AssertionError('Unexpected repeated analysis')):
+            studio.dispatch('demo',{})
+        self.assertEqual(inspect.call_count,1)
+        state=studio.snapshot()
+        self.assertTrue(any(m['eligible'] for m in state['matrices']))
+        self.assertTrue(any(not m['eligible'] for m in state['matrices']))
+
 
 if __name__=='__main__':unittest.main()

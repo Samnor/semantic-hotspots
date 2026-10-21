@@ -283,17 +283,20 @@ class RewritePlan:
         return {'json': root/'rewrite-plan.json', 'html': root/'rewrites.html'}
 
 
-def plan_rewrites(source, *, graph=None, ranked_ids=None):
+def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None):
     """Propose isolated edits and a bounded fixed-point combination per measure."""
     model = parse_model(source) if isinstance(source, dict) else source if isinstance(source, Model) else load_model(source)
-    graph = graph or DependencyGraph(model)
+    graph = graph or DependencyGraph(model, progress=progress)
     measures = list(model.measures)
     if ranked_ids is not None:
         positions = {n: i for i, n in enumerate(ranked_ids)}
         measures.sort(key=lambda m: positions.get(m.id, len(positions)))
     output = []
     dynamic = any(e.kind in {'calculation_item', 'function'} for e in model.entities.values())
-    for measure in measures:
+    from .progress import emit
+    emit(progress, 'rewrites', 'Check rewrite proposals', completed=0, total=len(measures), unit='measures')
+    for i, measure in enumerate(measures, 1):
+        emit(progress, 'rewrites', 'Check rewrite proposals', completed=i-1, total=len(measures), unit='measures', detail=measure.qualified_name)
         before = measure.expression or ''
         tree, diagnostics = logical_plan(before, model, measure)
         chain = [measure.id] + graph.dependency_ids(measure.id)
@@ -346,6 +349,7 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None):
                        'logical_before': tree.to_dict(), 'diagnostics': diagnostics,
                        'affected_downstream_measures': [m.id for m in model.measures if m.id != measure.id and graph.mask(m.id) & (1 << graph.index[measure.id])],
                        'candidates': candidates})
+        emit(progress, 'rewrites', 'Check rewrite proposals', completed=i, total=len(measures), unit='measures', detail=measure.qualified_name)
     return RewritePlan(output)
 
 

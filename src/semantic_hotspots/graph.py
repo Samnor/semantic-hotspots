@@ -6,6 +6,7 @@ from collections import defaultdict
 
 from .dax import ExpressionInfo, Resolver
 from .model import Model, ModelError
+from .progress import emit
 
 
 class CycleError(ModelError):
@@ -13,7 +14,7 @@ class CycleError(ModelError):
 
 
 class DependencyGraph:
-    def __init__(self, model: Model):
+    def __init__(self, model: Model, *, progress=None):
         self.model = model
         self.ids = sorted(model.entities)
         self.index = {n: i for i, n in enumerate(self.ids)}
@@ -22,7 +23,9 @@ class DependencyGraph:
         self.syntax: dict[str, ExpressionInfo] = {}
         self.diagnostics: list[str] = []
         resolver = Resolver(model)
-        for entity in model.entities.values():
+        emit(progress, 'dependencies', 'Trace dependencies', completed=0, total=len(model.entities), unit='objects')
+        for i, entity in enumerate(model.entities.values(), 1):
+            emit(progress, 'dependencies', 'Trace dependencies', completed=i-1, total=len(model.entities), unit='objects', detail=entity.qualified_name)
             if entity.expression:
                 try:
                     info = resolver.scan(entity.expression, entity)
@@ -35,6 +38,7 @@ class DependencyGraph:
                 self.dependencies[entity.id].add(model.tables[entity.table].id)
             if entity.kind == "format_string" and entity.metadata.get("for_measure"):
                 self.dependencies[entity.metadata['for_measure']].add(entity.id)
+        emit(progress, 'dependencies', 'Trace dependencies', detail='Resolve dependency order and detect cycles')
         for consumer, deps in self.dependencies.items():
             for dep in deps:
                 self.consumers[dep].add(consumer)
