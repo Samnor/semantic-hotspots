@@ -74,6 +74,43 @@ class _Parser:
             raise ModelError('Expression exceeds the logical-subset token limit')
         self.i = 0
         self.resolver = Resolver(model)
+        self.scopes = [{}]
+        self.variables = {}
+
+    def keyword(self, value):
+        token = self.peek()
+        return bool(token and token.kind == 'NAME' and token.value.upper() == value)
+
+    def variable(self, name):
+        return next((scope[name.casefold()] for scope in reversed(self.scopes) if name.casefold() in scope), None)
+
+    def block(self, token):
+        """Retain lexical bindings; never inline, move or reevaluate a VAR."""
+        self.scopes.append({})
+        bindings = []
+        while True:
+            name = self.take()
+            if (name.kind != 'NAME' or not re.fullmatch(r'(?:__)?[A-Za-z][A-Za-z0-9_]*', name.value)
+                    or name.value.upper() in {'VAR', 'RETURN', 'TRUE', 'FALSE', 'NOT', 'IN'}
+                    or name.value.casefold() in self.resolver.tables or name.value.casefold() in self.scopes[-1]):
+                raise ModelError('Unsupported or duplicate VAR name at offset '+str(name.start))
+            self.take('=')
+            value = self.expression()
+            identity = 'local:'+str(name.start)+':'+name.value.casefold()
+            binding = LogicalNode('variable_definition', 'unknown', name.start, value.end,
+                                  [value], target=identity, value=name.value)
+            bindings.append(binding)
+            self.variables[identity] = binding
+            self.scopes[-1][name.value.casefold()] = identity
+            if not self.keyword('VAR'):
+                break
+            self.take()
+        if not self.keyword('RETURN'):
+            raise ModelError('VAR block is missing RETURN at offset '+str(token.start))
+        self.take()
+        body = self.expression()
+        self.scopes.pop()
+        return LogicalNode('let', 'unknown', token.start, body.end, bindings+[body])
 
     def peek(self, value=None):
         token = self.tokens[self.i] if self.i < len(self.tokens) else None
@@ -89,13 +126,18 @@ class _Parser:
     def parse(self):
         result = self.expression()
         if self.peek() is not None:
-            raise ModelError('Syntax outside the supported logical subset (including VAR/table constructors)')
+            raise ModelError('Syntax outside the supported logical subset at offset '+str(self.peek().start))
         self.bind(result, (), ())
         return result
 
     def expression(self, minimum=0):
         token = self.take()
-        if token.kind == 'SYMBOL' and token.value in {'+', '-'}:
+        if token.kind == 'NAME' and token.value.upper() == 'VAR':
+            node = self.block(token)
+        elif token.kind == 'NAME' and token.value.upper() == 'NOT' and not self.peek('('):
+            child = self.expression(3)
+            node = LogicalNode('NOT', 'unknown', token.start, child.end, [child])
+        elif token.kind == 'SYMBOL' and token.value in {'+', '-'}:
             child = self.expression(6)
             node = LogicalNode('unary', 'unknown', token.start, child.end, [child], value=token.value)
         elif token.kind == 'SYMBOL' and token.value == '(':
@@ -118,7 +160,13 @@ class _Parser:
             node = LogicalNode(token.value.upper(), 'unknown', token.start, end, args)
         elif token.kind in {'NAME', 'QUOTED'}:
             table = self.resolver.tables.get(token.value.casefold())
-            if self.peek() and self.peek().kind == 'BRACKET':
+            variable = self.variable(token.value) if token.kind == 'NAME' else None
+            if variable:
+                if self.peek() and self.peek().kind == 'BRACKET':
+                    raise ModelError('Table-variable qualified columns are outside the logical subset')
+                node = LogicalNode('variable_reference', 'unknown', token.start, token.end,
+                                   target=variable, value=token.value)
+            elif self.peek() and self.peek().kind == 'BRACKET':
                 column = self.take()
                 target, _ = self.resolver.resolve(column.value, token.value, self.owner)
                 if not target:
@@ -164,7 +212,16 @@ class _Parser:
         node.supported = all(x.supported for x in c)
         if op in {'scan', 'column', 'measure', 'literal'}:
             return
-        if op == 'group':
+        if op == 'variable_reference':
+            binding = self.variables[node.target]
+            node.result_type, node.table, node.supported = binding.result_type, binding.table, binding.supported
+        elif op == 'variable_definition':
+            node.result_type, node.table = c[0].result_type, c[0].table
+            # Table-variable lineage/context is displayed but not rewritten.
+            node.supported &= node.result_type not in {'table', 'unknown', 'filter_modifier'}
+        elif op == 'let':
+            node.result_type, node.table = c[-1].result_type, c[-1].table
+        elif op == 'group':
             node.result_type, node.table = c[0].result_type, c[0].table
         elif op == 'unary':
             node.result_type = c[0].result_type
@@ -174,6 +231,21 @@ class _Parser:
             node.supported &= all(x.result_type not in {'table', 'unknown'} for x in c)
         elif op in {'TRUE', 'FALSE'} and not c:
             node.result_type = 'boolean'
+        elif op == 'BLANK' and not c:
+            node.result_type = 'blank'
+        elif op == 'ISBLANK' and len(c) == 1 and c[0].result_type not in {'table', 'unknown'}:
+            node.result_type = 'boolean'
+        elif op == 'NOT' and len(c) == 1 and c[0].result_type == 'boolean':
+            node.result_type = 'boolean'
+        elif op == 'IF' and len(c) in {2, 3} and c[0].result_type == 'boolean' and all(x.result_type not in {'table', 'unknown'} for x in c[1:]):
+            types = {x.result_type for x in c[1:]} - {'blank'}
+            node.result_type = next(iter(types)) if len(types) == 1 else 'scalar'
+        elif op == 'DIVIDE' and len(c) in {2, 3} and all(x.result_type in _NUMERIC | {'number', 'scalar', 'blank'} for x in c):
+            alternate = _plain(c[2]) if len(c) == 3 else None
+            node.result_type = 'number'
+            node.supported &= alternate is None or alternate.operation == 'literal' or (alternate.operation == 'BLANK' and not alternate.children)
+        elif op == 'REMOVEFILTERS' and all(x.operation in {'scan', 'column'} for x in c):
+            node.result_type = 'filter_modifier'
         elif op == 'SUM' and len(c) == 1 and _plain(c[0]).operation == 'column' and c[0].result_type in _NUMERIC:
             node.result_type = c[0].result_type
         elif op == 'SUMX' and len(c) == 2 and c[0].result_type == 'table' and c[1].result_type in _NUMERIC | {'number', 'scalar'}:
@@ -182,7 +254,7 @@ class _Parser:
             node.result_type, node.table = 'table', c[0].table
         elif op == 'COUNTROWS' and len(c) == 1 and c[0].result_type == 'table':
             node.result_type = 'int64'
-        elif op == 'CALCULATE' and c and c[0].result_type not in {'table', 'unknown'} and all(x.result_type in {'table', 'boolean'} for x in c[1:]):
+        elif op == 'CALCULATE' and c and c[0].result_type not in {'table', 'unknown', 'filter_modifier'} and all(x.result_type in {'table', 'boolean', 'filter_modifier'} for x in c[1:]):
             node.result_type = c[0].result_type
         else:
             node.supported = False
@@ -197,7 +269,13 @@ def logical_plan(expression, model, owner):
             raise ModelError('Expression exceeds the logical-subset size limit')
         tree = _Parser(expression, model, owner).parse()
         if not tree.supported:
-            return tree, ['An operation or operand type is outside the supported logical subset; rewrites withheld.']
+            def unsupported(node):
+                if node.operation == 'variable_reference':return []
+                children = [reason for child in node.children for reason in unsupported(child)]
+                if children or node.supported:return children
+                label = 'table VAR' if node.operation == 'variable_definition' and node.result_type == 'table' else node.operation
+                return [label+' at offset '+str(node.start)]
+            return tree, ['Automatic rewrite coverage is missing for '+', '.join(dict.fromkeys(unsupported(tree)))+'. The parsed structure is retained; rewrites withheld.']
         return tree, []
     except (ModelError, RecursionError) as exc:
         return LogicalNode('opaque', 'unknown', 0, len(expression), supported=False), [str(exc) or 'Logical subset nesting limit exceeded']
@@ -302,7 +380,7 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
         before = measure.expression or ''
         tree, diagnostics = logical_plan(before, model, measure)
         chain = [measure.id] + graph.dependency_ids(measure.id)
-        if tree.result_type in {'table', 'unknown'}:
+        if tree.result_type in {'table', 'unknown'} and not diagnostics:
             diagnostics.append('Measure scalar result type is not established in the logical subset.')
         if any(e.kind == 'format_string' and e.metadata.get('for_measure') == measure.id for e in model.entities.values()):
             diagnostics.append('Dynamic format expression requires additional alias-context validation; rewrites withheld.')
@@ -311,7 +389,7 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
         if dynamic:
             diagnostics.append('Calculation groups or model functions are present; query-scoped rewrite validation is withheld.')
         if measure.id in graph.blocked or any((model.entities[n].kind == 'measure' and not model.entities[n].expression)
-                                             or (n in graph.syntax and (graph.syntax[n].unresolved or any('Unmatched' in d or 'Unterminated' in d for d in graph.syntax[n].diagnostics))) for n in chain):
+                                             or (n in graph.syntax and (graph.syntax[n].unresolved or graph.syntax[n].reference_blockers)) for n in chain):
             diagnostics.append('Static dependency chain is incomplete or cyclic; rewrites withheld.')
         candidates = []
         def candidate(after, steps, combined=False):

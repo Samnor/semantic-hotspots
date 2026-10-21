@@ -109,14 +109,22 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
                 edge(op, dep, 'static_reference')
             continue
         represented = set()
+        variable_ids = {}
         def expand(item, path):
             if item.operation in {'column', 'measure'}:
                 represented.add(item.target)
                 return item.target
             if item.operation == 'group':
                 return expand(item.children[0], path + '.group')
+            if item.operation == 'variable_reference':
+                return variable_ids[item.target]
             identity = 'operation:' + n + ':' + path
             label = item.operation.upper()
+            if item.operation == 'variable_definition':
+                variable_ids[item.target] = identity
+                label = 'VAR '+item.value
+            elif item.operation == 'let':
+                label = 'VAR / RETURN'
             if item.operation in {'binary', 'unary', 'literal'}:
                 label = item.value
             nodes[identity] = {'id': identity, 'type': 'literal' if item.operation == 'literal' else 'operation',
@@ -129,7 +137,8 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
                 represented.add(item.target)
                 edge(identity, item.target, 'reads_table')
             for i, child in enumerate(item.children):
-                edge(identity, expand(child, path + '.' + str(i)), 'argument', argument=i+1)
+                kind = 'variable_binding' if item.operation == 'let' and i < len(item.children)-1 else 'return_value' if item.operation == 'let' else 'argument'
+                edge(identity, expand(child, path + '.' + str(i)), kind, argument=i+1)
             return identity
         edge(n, expand(tree, 'root'), 'definition', phase=phase)
         # A parsed call may still have unmodeled semantics, for example a model
@@ -156,15 +165,16 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
             pending.extend(e['to'] for e in outgoing[n])
     unresolved = {n: infos[n].unresolved for n in sorted(wanted) if n in infos and infos[n].unresolved}
     reference_diagnostics = {n: infos[n].diagnostics for n in sorted(wanted) if n in infos and infos[n].diagnostics}
+    reference_blockers = {n: infos[n].reference_blockers for n in sorted(wanted) if n in infos and infos[n].reference_blockers}
     missing = [n for n in sorted(wanted) if model.entities[n].kind == 'measure'
                and not overrides.get(n, model.entities[n].expression)]
     return {'schema_version': '1.0', 'kind': 'static-computation-dag', 'root': owner.id,
             'edge_meaning': 'consumer -> dependency; argument numbers describe syntax, not engine execution order',
             'is_acyclic': ordered is not None, 'evaluation_order': ordered,
-            'dependency_complete': ordered is not None and not unresolved and not missing and not reference_diagnostics,
+            'dependency_complete': ordered is not None and not unresolved and not missing and not reference_blockers,
             'operator_complete': not any(n.get('operation') == 'opaque' for n in nodes.values()),
             'logical_subset_validated': not diagnostics,
-            'unresolved': unresolved, 'reference_diagnostics': reference_diagnostics, 'missing_definitions': missing,
+            'unresolved': unresolved, 'reference_diagnostics': reference_diagnostics, 'reference_blockers': reference_blockers, 'missing_definitions': missing,
             'diagnostics': diagnostics, 'phase_diagnostics': phase_diagnostics,
             'query_time_node_ids': sorted(query), 'refresh_time_node_ids': sorted(refresh),
             'materialization_node_ids': materializations,
@@ -299,13 +309,18 @@ def render_dag_comparison(comparison):
         if not g['dependency_complete']:notes.append('The dependency chain is incomplete or cyclic; inspect unresolved references and missing definitions below.')
         if not g['operator_complete']:notes.append('Some DAX is opaque; its exact definition and resolved references are retained without invented operator topology.')
         elif g['diagnostics']:notes.append('Some parsed calls lack established type/context semantics. They are labelled “syntax only”; diagnostics are retained below.')
+        if g['dependency_complete'] and g['reference_diagnostics']:notes.append('Reference notes below are informational; no missing or ambiguous dependencies were found.')
         issues=('<p class="dag-note">'+esc(' '.join(notes))+'</p>') if notes else ''
-        sides.append(f'<section class="dag-side"><h3>{title}</h3><p>{esc(root["label"])}</p><pre>{esc(root["expression"] or "Definition missing")}</pre>{issues}<h4>Query-time dependency view</h4><div class="dag-diagram">{_svg(g,g["query_time_node_ids"],highlights)}</div>{refresh}<details><summary>Every node, definition and edge · {len(g["nodes"])} nodes / {len(g["edges"])} edges</summary>{definitions}<ol class="dag-edges">{edge_list}</ol><pre>{esc(json.dumps({k:g[k] for k in ["unresolved","reference_diagnostics","missing_definitions","diagnostics","phase_diagnostics","evaluation_order"]},ensure_ascii=False,indent=2))}</pre></details></section>')
+        sides.append(f'<section class="dag-side"><h3>{title}</h3><p>{esc(root["label"])}</p><pre>{esc(root["expression"] or "Definition missing")}</pre>{issues}<h4>Query-time dependency view</h4><div class="dag-diagram">{_svg(g,g["query_time_node_ids"],highlights)}</div>{refresh}<details><summary>Every node, definition and edge · {len(g["nodes"])} nodes / {len(g["edges"])} edges</summary>{definitions}<ol class="dag-edges">{edge_list}</ol><pre>{esc(json.dumps({k:g.get(k,{}) for k in ["unresolved","reference_diagnostics","reference_blockers","missing_definitions","diagnostics","phase_diagnostics","evaluation_order"]},ensure_ascii=False,indent=2))}</pre></details></section>')
     delta=comparison['difference']
     summary=comparison['summary']
     explanation=('<p>Upstream measure dependencies: '+str(summary['upstream_measures_original'])+' original → '+str(summary['upstream_measures_proposed'])+' proposed. Root DAX '+('changed.' if summary['root_expression_changed'] else 'is unchanged.')+' These are structural differences, not measured work or speedup.</p>')
     context=('<details><summary>Matrix context and retained grain</summary><pre>'+esc(json.dumps(comparison['context'],ensure_ascii=False,indent=2))+'</pre></details>') if comparison.get('context') else ''
-    return ('<p class="dag-note">Arrows mean “depends on”. Proposed is a candidate, not a proven improvement. Query views stop at stored materializations; expand refresh lineage to see how they are built.</p>'+explanation+'<p class="meta">Borders: rust = only in original path; teal = only in proposed path; amber = changed definition. Gold fill = refresh work or a stored materialization. Source objects are not deleted.</p>'+context+'<div class="dag-pair">'+''.join(sides)+'</div><details><summary>What changed between the paths?</summary><p>Operators by phase (syntactic occurrences, not execution counts):</p><pre>'+esc(json.dumps({k:delta[k] for k in ['query_operators_original','query_operators_proposed','refresh_operators_original','refresh_operators_proposed']},indent=2))+'</pre><pre>'+esc(json.dumps(delta,ensure_ascii=False,indent=2))+'</pre></details>')
+    creation=comparison.get('creation',{})
+    status=''
+    if creation.get('outcome')=='unchanged_copy':
+        status='<section class="dag-note"><h2>Unchanged copy — no automatic rewrite applied</h2><p>The new root has a separate name, but its DAX and dependency computation are unchanged. A matching diagram is expected. This does not establish that the original is optimal.</p><p>'+esc(creation.get('explanation',''))+'</p><ul>'+''.join('<li>'+esc(reason)+'</li>' for reason in creation.get('reasons',[]))+'</ul></section>'
+    return (status+'<p class="dag-note">Arrows mean “depends on”. Proposed is a candidate, not a proven improvement. Query views stop at stored materializations; expand refresh lineage to see how they are built.</p>'+explanation+'<p class="meta">Borders: rust = only in original path; teal = only in proposed path; amber = changed definition. Gold fill = refresh work or a stored materialization. Source objects are not deleted.</p>'+context+'<div class="dag-pair">'+''.join(sides)+'</div><details><summary>What changed between the paths?</summary><p>Operators by phase (syntactic occurrences, not execution counts):</p><pre>'+esc(json.dumps({k:delta[k] for k in ['query_operators_original','query_operators_proposed','refresh_operators_original','refresh_operators_proposed']},indent=2))+'</pre><pre>'+esc(json.dumps(delta,ensure_ascii=False,indent=2))+'</pre></details>')
 
 
 def dag_to_text(graph):
@@ -325,6 +340,7 @@ def dag_to_text(graph):
             lines.append('  -> '+e['to']+' ('+role+')')
     lines += ['', 'Unresolved: '+json.dumps(graph['unresolved'],ensure_ascii=False),
               'Reference diagnostics: '+json.dumps(graph['reference_diagnostics'],ensure_ascii=False),
+              'Reference blockers: '+json.dumps(graph.get('reference_blockers',{}),ensure_ascii=False),
               'Phase diagnostics: '+json.dumps(graph.get('phase_diagnostics',{}),ensure_ascii=False),
               'Missing definitions: '+json.dumps(graph['missing_definitions'],ensure_ascii=False),
               'Diagnostics: '+json.dumps(graph['diagnostics'],ensure_ascii=False)]

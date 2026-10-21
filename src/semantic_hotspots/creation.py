@@ -91,6 +91,18 @@ def _create_from_review(model, review, *, progress=None):
         diagnostics.append('The original dynamic format expression is not copied; review formatting separately.')
     complete=comparison['original']['dependency_complete'] and comparison['proposed']['dependency_complete']
     if not complete:diagnostics.append('Validation queries withheld because the original or new dependency chain is incomplete or cyclic.')
+    explanation = ('Created a new measure with '+str(len(chosen['steps']))+(' guarded simplification' if len(chosen['steps'])==1 else ' guarded simplifications')+'. Validate its results and performance before use.' if chosen else 'Created an unchanged copy. No supported guarded rewrite matched; no performance improvement is claimed.')
+    reason_kind = ('rewritten' if chosen else 'incomplete_dependencies' if not complete else
+                   'unsupported_syntax_or_semantics' if not comparison['original']['logical_subset_validated'] else
+                   'guard_blocked' if any(not message.startswith('No guarded rule matched') for message in d['diagnostics']) else 'no_matching_rule')
+    if reason_kind=='incomplete_dependencies':
+        explanation='Created an unchanged copy. Automatic rewriting was blocked by incomplete, ambiguous, or cyclic dependencies. See the reasons below; no performance improvement is claimed.'
+    elif reason_kind=='unsupported_syntax_or_semantics':
+        explanation='Created an unchanged copy. The formula uses syntax or operations outside automatic rewrite coverage. See the reasons below; no performance improvement is claimed.'
+    elif reason_kind=='guard_blocked':
+        explanation='Created an unchanged copy. Automatic rewriting was withheld by a safety check. See the reasons below; no performance improvement is claimed.'
+    comparison['creation'] = {'outcome':'rewritten' if chosen else 'unchanged_copy',
+                              'explanation':explanation,'reason_kind':reason_kind,'reasons':diagnostics}
     measure_object={'name':created.name,'expression':expression}
     if owner.metadata.get('format_string'):measure_object['formatString']=owner.metadata['format_string']
     return CreatedMeasure({'schema_version':'1.0','kind':'created-measure','original_measure_id':owner.id,
@@ -98,7 +110,7 @@ def _create_from_review(model, review, *, progress=None):
         'expression':expression,'definition':created.name+' =\n'+expression+'\n','measure_object':measure_object,
         'outcome':'rewritten' if chosen else 'unchanged_copy','selected_candidate_id':chosen['id'] if chosen else None,
         'selection_basis':'Bounded combined guarded rewrite, otherwise an isolated guarded rewrite; no timing-based selection.',
-        'explanation':('Created a new measure with '+str(len(chosen['steps']))+(' guarded simplification' if len(chosen['steps'])==1 else ' guarded simplifications')+'. Validate its results and performance before use.' if chosen else 'Created an unchanged copy. No supported guarded rewrite matched; no performance improvement is claimed.'),
+        'explanation':explanation,'reason_kind':reason_kind,
         'steps':copy.deepcopy(chosen['steps']) if chosen else [],'visual_contexts':contexts,
         'dag_comparison':comparison,'diagnostics':diagnostics,'validation_available':complete,
         'validation_status':'not_run','performance_status':'unknown'})

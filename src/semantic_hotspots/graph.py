@@ -33,7 +33,7 @@ class DependencyGraph:
                     self.dependencies[entity.id].update(r.target for r in info.references)
                 except ModelError as exc:
                     self.diagnostics.append(f"{entity.qualified_name}: {exc}")
-                    self.syntax[entity.id] = ExpressionInfo(diagnostics=[str(exc)])
+                    self.syntax[entity.id] = ExpressionInfo(diagnostics=[str(exc)], reference_blockers=[str(exc)])
             if entity.kind == "column":
                 self.dependencies[entity.id].add(model.tables[entity.table].id)
             if entity.kind == "format_string" and entity.metadata.get("for_measure"):

@@ -123,6 +123,7 @@ class ExpressionInfo:
     virtual_columns: list[str] = field(default_factory=list)
     variables: list[str] = field(default_factory=list)
     diagnostics: list[str] = field(default_factory=list)
+    reference_blockers: list[str] = field(default_factory=list)
 
 
 class Resolver:
@@ -235,4 +236,13 @@ class Resolver:
             info.diagnostics.append("Calculation-group behavior depends on the selected measure; this graph cannot expand dynamic selected-measure dependencies.")
         if variables or aliases:
             info.diagnostics.append("Variable/table-alias scopes are analyzed conservatively; graph edges are static possibilities, not evaluated calls.")
+        info.reference_blockers = list(info.diagnostics)
+        if variables and not aliases:
+            # The scoped parser binds declarations and references without
+            # inlining. A coverage warning is not itself a missing dependency.
+            from .optimizer import logical_plan
+            tree, _ = logical_plan(text, self.model, owner)
+            if tree.operation != 'opaque':
+                info.reference_blockers.remove(info.diagnostics[-1])
+                info.diagnostics[-1] = 'VAR bindings were resolved lexically; references describe static possibilities, not evaluated calls.'
         return info
