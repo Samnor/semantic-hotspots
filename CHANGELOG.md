@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.1
 
 - Identify dependency blockers individually, separating scope uncertainty, unresolved references, missing definitions, syntax-scan failures and detected cycles.
 - Include the unqualified reference and source location in logical-binding failures, and identify the function, owning measure and source line for controlled-evaluation guards.
