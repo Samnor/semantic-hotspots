@@ -54,7 +54,7 @@ class LogicalRewriteTests(unittest.TestCase):
         for expression in ['SUMX(Sales, [Total])', 'SUMX(Sales, Sales[Amount] * 2)',
                            'SUMX(FILTER(Sales, Sales[Amount]>0), Sales[Amount])',
                            'SUMX(VALUES(Sales[Amount]), Sales[Amount])',
-                           'IF(TRUE(), SUMX(Sales, Sales[Amount]), 0)',
+                           'IF(UnknownCondition(), SUMX(Sales, Sales[Amount]), 0)',
                            'VAR t = Sales RETURN SUMX(t, Sales[Amount])',
                            'SUMX(Sales, [Missing])', 'SUMX(Sales, Sales[Amount]) + Missing(1)',
                            'SUMX(Sales, Sales[Amount]) /*', 'SUMX(Sales, Sales[Amount]']:

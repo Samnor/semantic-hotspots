@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.13.0/semantic_hotspots-0.13.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.14.0/semantic_hotspots-0.14.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.13.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.14.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -36,7 +36,7 @@ The command opens a local browser interface. Select a PBIP, BIM or TMDL model wi
 
 During analysis, a persistent activity panel shows the actual stage, current measure/object, completed-item counts where known, elapsed time and completed stages. Model reading, dependency tracing, rule/ranking review, rewrite checks, matrix grain review and report writing have separate checkpoints. A responsive Studio with no new work checkpoint is distinguished from a lost browser connection. Remaining time is unknown; no overall percentage or ETA is fabricated. Completion and failures remain visible, with a link to findings or an analysis retry. Matrix eligibility checks reuse the same request’s analysis instead of repeatedly reanalyzing every measure.
 
-Studio starts with measure selection and **Create new measure**. Visual contexts are optional and default to none; select any matching matrices with checkboxes. Initial analysis ranks measures and defers rewrite checks until creation. Copy or download the new named DAX for the same model. The separate advanced summary-table workflow generates a PBIP ZIP for one matrix. Open and refresh that project explicitly in Desktop, find the loaded model, choose it using the matching-definition hint, then click **Validate, then benchmark**. A matching hint does not auto-select or fully attest a loaded model.
+Studio starts with measure selection and **Create new measure**. If no automatic rewrite applies, the result says **Unchanged copy**, explains the coverage gap or blocker, and repeats that explanation above the paired DAGs. Matching DAGs in this case are expected and do not mean the original is optimal. Visual contexts are optional and default to none; select any matching matrices with checkboxes. Initial analysis ranks measures and defers rewrite checks until creation. Copy or download the new named DAX for the same model. The separate advanced summary-table workflow generates a PBIP ZIP for one matrix. Open and refresh that project explicitly in Desktop, find the loaded model, choose it using the matching-definition hint, then click **Validate, then benchmark**. A matching hint does not auto-select or fully attest a loaded model.
 
 Optionally choose a native **Performance Analyzer version 1.0.0 JSON export** when opening a model. Known recorded DAX contexts sort first; unknown contexts retain static priority. Measure associations use bound query references, and matrix associations require an exact unambiguous visual ID. Titles are not fuzzy-matched. These are inclusive/shared DSE wall-clock query durations through first row, not isolated measure cost, full result-reading time, CPU or FE/SE. Missing/truncated events and query-scoped bindings stay explicit. See Microsoft's [export schema](https://github.com/microsoft/powerbi-desktop-samples/blob/main/Performance%20Analyzer/performanceAnalyzerExport.schema.json) and [event-format documentation](https://github.com/microsoft/powerbi-desktop-samples/blob/main/Performance%20Analyzer/Power%20BI%20Performance%20Analyzer%20Export%20File%20Format.docx). Recordings are read offline and never executed.
 
@@ -227,7 +227,7 @@ Runtime analysis records direct query references and **potential chain contexts*
 | Partial measure-catalog JSON | User-supplied definitions; missing columns, relationships and definitions remain unknown |
 | Binary `.pbix` / `.pbit` | Not supported; export/save as PBIP/TMDL or BIM first |
 
-General lineage uses lexical/call structure and metadata projection; rewrite proposals additionally use a small bound, typed logical subset. This is **not a full DAX compiler, TOM serializer, M parser, VertiPaq analyzer, query-plan profiler or engine binding authority**. It handles strings, comments, escaped identifiers, nested calls and case-insensitive model-name lookup. Complex variable/extension-column scopes and ambiguous names remain conservative diagnostics. Selected-measure calculation-group dependencies cannot be fully resolved statically. RLS expressions and calculation-group activation/precedence are not expanded into measure graphs. Table storage defaults/mixed partitions can remain unknown when not supplied.
+General lineage uses lexical/call structure and metadata projection; rewrite proposals additionally use a small bound, typed logical subset. This is **not a full DAX compiler, TOM serializer, M parser, VertiPaq analyzer, query-plan profiler or engine binding authority**. It handles strings, comments, escaped identifiers, nested calls and case-insensitive model-name lookup. Scoped `VAR ... RETURN` declarations retain separate binding nodes and shared references, including nested scalar scopes. Their definitions are never moved or inlined. Existing guarded rules can run inside recognized scalar variables and `IF`/`NOT`/`ISBLANK`/`BLANK`/`DIVIDE` expressions, including `CALCULATE` with `REMOVEFILTERS`. Table variables, extension-column scopes and ambiguous names remain outside automatic rewrite coverage. Informational notes about bound variables do not mark a dependency chain incomplete; actual reference blockers remain explicit. Selected-measure calculation-group dependencies cannot be fully resolved statically. RLS expressions and calculation-group activation/precedence are not expanded into measure graphs. Table storage defaults/mixed partitions can remain unknown when not supplied.
 
 TMDL's `ref` declarations and perspective entries are not table definitions; supply the full model folder. Model inputs are read-only. Connection strings and M/SQL partition source text are not retained in exported analysis; DAX expressions and source paths are retained. Reports may therefore contain your business logic and should be handled like the source model.
 
@@ -310,7 +310,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.13.0/semantic_hotspots-0.13.0-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.14.0/semantic_hotspots-0.14.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -622,8 +622,10 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.13.0.
+MIT licensed. Version 0.14.0.
 
 ## Contributing and data handling
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development instructions and [SECURITY.md](SECURITY.md) for security reporting. All bundled models and telemetry are fictional. Keep model exports, generated reports, source data, credentials and local validation artifacts outside Git; these may contain business logic or sensitive values.
+
+Scoped-variable syntax follows Microsoft’s [VAR reference](https://learn.microsoft.com/en-us/dax/var-dax). The recognized scalar forms follow [IF](https://learn.microsoft.com/en-us/dax/if-function-dax) and [DIVIDE](https://learn.microsoft.com/en-us/dax/divide-function-dax); this bounded representation does not implement a DAX engine.

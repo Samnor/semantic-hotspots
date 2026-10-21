@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0
+
+- Parse scoped VAR/RETURN bindings and shared variable references in computation DAGs without inlining or moving their definitions.
+- Allow existing guarded rewrites inside recognized scalar variables, IF/NOT/ISBLANK/BLANK, DIVIDE with literal alternatives, and CALCULATE with REMOVEFILTERS. Table variables remain outside automatic rewrite coverage.
+- Separate informational reference notes from dependency blockers when VAR scopes are bound. Missing/ambiguous references, unsupported scopes and cycles still block validation.
+- Explain unchanged copies above both Studio results and paired DAGs, and identify unsupported operations with source offsets.
+
 ## 0.13.0
 
 - Make the primary workflow Select measure -> optional visual checkboxes -> Create new measure, with copy/download output and advanced proposal details collapsed.

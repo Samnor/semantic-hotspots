@@ -87,11 +87,11 @@ class DagComparisonTests(unittest.TestCase):
         self.assertIn('Reference diagnostics:',dag_to_text(g))
 
     def test_syntax_only_calls_are_not_invented_or_claimed_typed(self):
-        data=sample();data['model']['tables'][0]['measures'][0]['expression']='DIVIDE(SUM(Orders[Amount]), 2)'
+        data=sample();data['model']['tables'][0]['measures'][0]['expression']='MEDIAN(Orders[Amount])'
         g=computation_dag(data,'Leaf');assert_graph(self,g)
         self.assertTrue(g['operator_complete']);self.assertFalse(g['logical_subset_validated'])
-        divide=next(n for n in g['nodes'] if n.get('operation')=='DIVIDE')
-        self.assertFalse(divide['supported']);self.assertTrue(g['diagnostics'])
+        median=next(n for n in g['nodes'] if n.get('operation')=='MEDIAN')
+        self.assertFalse(median['supported']);self.assertTrue(g['diagnostics'])
 
     def test_summary_retains_refresh_work_and_uses_real_generated_definitions(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -178,7 +178,9 @@ class DagComparisonTests(unittest.TestCase):
             self.assertEqual(json.loads((root/'original.dag.json').read_text(encoding="utf-8")),c['original'])
             self.assertEqual(json.loads((root/'proposed.dag.json').read_text(encoding="utf-8")),c['proposed'])
             self.assertIn('Original measure DAG',page);self.assertIn('Proposed measure DAG',page)
-            self.assertIn('Opaque',json.dumps(compare_measure_dags(data,name,proposed_expression='VAR x = 1 RETURN x')))
+            proposed=compare_measure_dags(data,name,proposed_expression='VAR x = 1 RETURN x')['proposed']
+            self.assertTrue(proposed['operator_complete'])
+            self.assertTrue(any(n.get('operation')=='variable_definition' for n in proposed['nodes']))
 
     def test_analysis_and_standalone_rewrite_reports_export_proposal_dags(self):
         for plan in [analyze(sample()),plan_rewrites(sample())]:
