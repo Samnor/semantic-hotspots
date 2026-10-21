@@ -51,3 +51,8 @@ powerbi-showcase/
 smoke-project/
 .semantic-hotspots-ui/
 showcase-results/
+
+# Generated named measure packages
+new-measure/
+new-measure-contexts/
+smoke-created-measure/

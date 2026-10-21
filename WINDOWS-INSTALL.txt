@@ -1,11 +1,11 @@
-semantic-hotspots 0.12.0
+semantic-hotspots 0.13.0
 Requires Python 3.10 or later.
 
 Create a virtual environment:
   python -m venv .venv
 
 Install the universal wheel:
-  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.12.0/semantic_hotspots-0.12.0-py3-none-any.whl"
+  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.13.0/semantic_hotspots-0.13.0-py3-none-any.whl"
 
 Check the installation:
   .\.venv\Scripts\python.exe -m semantic_hotspots --version
@@ -16,14 +16,15 @@ then restart Studio and refresh the browser page.
 Launch the guided interface (bundled demo included):
   .\.venv\Scripts\python.exe -m semantic_hotspots studio --workspace .
 
-To review just one measure after Analyze model:
-  Optimize one measure -> search/select -> optionally choose one matching matrix under Add visual context
-  -> Find improvements -> choose a proposal.
-  Visual context defaults to None / measure only. Only matrices displaying the
-  selected measure are listed. Use Remove visual context to clear the selection.
-  Use Compare original & proposed DAGs, Copy proposed DAX or Download proposed DAX.
-  In the bundled demo, choose Sales / Revenue iterator. No matrix is required.
-  A downloaded total validation query is an unexecuted scalar-total check only.
+To create a new measure after Analyze model:
+  Select one measure -> optionally tick matching visuals -> Create new measure.
+  Use Copy new measure or Download new measure, then paste into Power BI
+  Desktop's New measure editor in the indicated table. The original is unchanged.
+  No visual is required. You can select one or several using checkboxes.
+  The result includes the new name, DAX, DAG comparison and validation downloads.
+  If no guarded rewrite applies, the result explicitly says unchanged copy.
+  In the bundled demo, choose Sales / Revenue iterator for a simplification.
+  Generated queries are unexecuted; test correctness and timings before use.
 
 For Windows matrix DAX validation, install the [engine] extra below, then click the
 explicit official-client setup button in Studio or run engine-setup. Open and
@@ -42,7 +43,7 @@ For the one-matrix Power BI showcase, open powerbi-showcase\Showcase.pbip in a c
 Parsing, analysis and generation have no runtime dependencies. Actual DAX benchmarks require a separately installed engine. DAX Studio is optional.
 
 For direct local engine queries, install the optional client extra:
-  python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.12.0/semantic_hotspots-0.12.0-py3-none-any.whl"
+  python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.13.0/semantic_hotspots-0.13.0-py3-none-any.whl"
   python -m semantic_hotspots engine-sessions
   python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 

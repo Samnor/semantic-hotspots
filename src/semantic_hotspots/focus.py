@@ -37,7 +37,8 @@ class MeasureReview:
         (root/'original.dag.json').write_text(json.dumps(data['original_dag'],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
         (root/'original.txt').write_text(dag_to_text(data['original_dag']),encoding='utf-8')
         items=[]
-        landing=data.get('landing_visual')
+        landing=data.get('landing_visual');landings=data.get('landing_visuals',[])
+        (root/'visual-contexts.json').write_text(json.dumps(landings,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
         if landing:
             (root/'landing-visual.json').write_text(json.dumps(landing,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
         for c in data['candidates']:
@@ -45,15 +46,15 @@ class MeasureReview:
             write_dag_comparison(c['dag_comparison'],folder)
             (folder/'proposed.dax').write_text(c['after'],encoding='utf-8')
             (folder/'validate-total.dax').write_text(_validation_query(data['table'],data['name'],c['after'],data['validation_alias']),encoding='utf-8')
-            _write_landing_queries(folder,data['table'],data['name'],c['after'],data['validation_alias'],landing)
+            _write_visual_queries(folder,data['table'],data['name'],c['after'],data['validation_alias'],landings)
             url='candidates/'+c['id']+'/'
-            context_link=(' · <a href="'+url+'landing-queries.zip" download>Landing context queries</a>') if landing and landing['workloads'] else ''
+            context_link=(' · <a href="'+url+'visual-context-queries.zip" download>Visual context queries</a>') if landings else ''
             items.append('<article><h3>'+esc(c['title'])+'</h3><p>Correctness: not tested · Performance: unknown</p><pre>'+esc(c['after'])+'</pre><p><a href="'+url+'report.html">Compare original and proposed DAGs</a> · <a href="'+url+'proposed.dax" download>Download proposed DAX</a> · <a href="'+url+'validate-total.dax" download>Download total validation query</a>'+context_link+'</p></article>')
         diagnostics=''.join('<li>'+esc(d)+'</li>' for d in data['diagnostics'])
         page=('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
               '<title>Optimize one measure</title><style>'+_CSS+DAG_CSS+'</style><main><h1>Optimize one measure</h1><h2>'+esc(data['measure'])+'</h2>'
               '<p>Only this measure’s proposed expression changes. Helper measures and source tables remain context. No source model is edited and no DAX is executed.</p>'
-              +('<h3>Optional landing visual: '+esc(landing['title'])+'</h3><p>Its axes, filters and totals are retained; displayed values target this measure only. Queries are representative contexts, not the exact rendered visual query.</p><p><a href="landing-visual.json">Landing context and grain review</a></p>' if landing else '<p>No landing visual selected. Measure review remains independent of matrices.</p>')+
+              +('<h3>Optional landing visual: '+esc(landing['title'])+'</h3><p>Its axes, filters and totals are retained; displayed values target this measure only. Queries are representative contexts, not the exact rendered visual query.</p><p><a href="landing-visual.json">Landing context and grain review</a></p>' if landing else '<p>'+str(len(landings))+' optional visual contexts selected. <a href="visual-contexts.json">Inspect contexts</a></p>' if landings else '<p>No landing visual selected. Measure review remains independent of matrices.</p>')+
               '<h3>Original DAX</h3><pre>'+esc(data['expression'] or 'Definition missing')+'</pre><p><a href="original.dax" download>Original DAX</a> · <a href="original.dag.json">Original DAG JSON</a> · <a href="original.txt">Full chain and definitions</a></p>'
               '<h3>Original query dependency view</h3><div class="dag-diagram">'+_svg(data['original_dag'],data['original_dag']['query_time_node_ids'])+'</div>'
               '<p>This is static lineage. The full chain download retains refresh lineage, unknowns and diagnostics.</p><h2>Proposals for this measure</h2>'
@@ -102,7 +103,46 @@ def _write_landing_queries(folder, table, name, expression, alias, landing):
         for path in sorted(target.iterdir()):archive.write(path,path.name)
 
 
-def review_measure(source, measure, *, table=None, analysis=None, progress=None, landing_matrix=None):
+def _write_visual_queries(folder, table, name, expression, alias, landings):
+    if not landings:return None
+    contexts=folder/'visual-contexts';contexts.mkdir()
+    index=[]
+    for i,landing in enumerate(landings,1):
+        target=contexts/str(i);target.mkdir()
+        (target/'context.json').write_text(json.dumps(landing,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+        _write_landing_queries(target,table,name,expression,alias,landing)
+        index.append({'matrix_id':landing['matrix_id'],'directory':str(i),'query_count':len(landing['workloads']),
+                      'diagnostics':landing['diagnostics']})
+    (contexts/'index.json').write_text(json.dumps({'visuals':index,'validation_status':'not_run',
+        'scope':'Each visual is a separate context; filters are not merged.'},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+    archive=folder/'visual-context-queries.zip'
+    with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
+        for path in sorted(contexts.rglob('*')):
+            if path.is_file() and path.suffix!='.zip':z.write(path,path.relative_to(contexts).as_posix())
+    if len(landings)==1:_write_landing_queries(folder,table,name,expression,alias,landings[0])
+    return archive
+
+
+def _landing_context(model, owner, spec, analysis, progress):
+    from .matrices import MatrixSpec, analyze_matrices, measure_landing_spec
+    from .project import _select_analysis
+    source_spec=spec if isinstance(spec,MatrixSpec) else MatrixSpec.from_dict(spec)
+    scoped=measure_landing_spec(model,owner.id,source_spec)
+    context=analyze_matrices(model,[scoped],analysis=analysis,progress=progress)
+    try:
+        _select_analysis(model,context,scoped.id);eligible=True;reason=None
+    except ModelError as exc:eligible=False;reason=str(exc)
+    context_row=context.matrices[0]
+    landing={'matrix_id':scoped.id,'title':scoped.title,'original_values':copy.deepcopy(source_spec.values),
+             'spec':scoped.to_dict(),'diagnostics':context_row['diagnostics'],
+             'grain_advice':context_row['grain_advice'],'summary_export':{'eligible':eligible,'reason':reason},
+             'workloads':context.workloads if scoped.context_complete else [],'warnings':context.warnings}
+    if not scoped.context_complete:
+        landing['diagnostics'].append('Review the landing visual context before generating its validation queries.')
+    return landing
+
+
+def review_measure(source, measure, *, table=None, analysis=None, progress=None, landing_matrix=None, landing_matrices=None):
     """Select exactly one root for proposals; include helpers only as lineage.
 
     Reusing an analysis requires its same unmodified model instance. No measure
@@ -120,28 +160,18 @@ def review_measure(source, measure, *, table=None, analysis=None, progress=None,
     else:
         row=plan_rewrites(model,graph=graph,measure=owner.id,progress=progress).measures[0]
     original=computation_dag(model,owner.id,graph=graph)
-    landing=None
-    if landing_matrix is not None:
-        from .matrices import MatrixSpec, analyze_matrices, measure_landing_spec
-        from .project import _select_analysis
-        source_spec=landing_matrix if isinstance(landing_matrix,MatrixSpec) else MatrixSpec.from_dict(landing_matrix)
-        scoped=measure_landing_spec(model,owner.id,source_spec)
-        context=analyze_matrices(model,[scoped],analysis=analysis,progress=progress)
-        try:
-            _select_analysis(model,context,scoped.id);eligible=True;reason=None
-        except ModelError as exc:eligible=False;reason=str(exc)
-        context_row=context.matrices[0]
-        landing={'matrix_id':scoped.id,'title':scoped.title,'original_values':copy.deepcopy(source_spec.values),
-                 'spec':scoped.to_dict(),'diagnostics':context_row['diagnostics'],
-                 'grain_advice':context_row['grain_advice'],'summary_export':{'eligible':eligible,'reason':reason},
-                 'workloads':context.workloads if scoped.context_complete else [],'warnings':context.warnings}
-        if not scoped.context_complete:
-            landing['diagnostics'].append('Review the landing visual context before generating its validation queries.')
+    if landing_matrix is not None and landing_matrices is not None:
+        raise ModelError('Supply landing_matrix or landing_matrices, not both')
+    specs=landing_matrices if landing_matrices is not None else [landing_matrix] if landing_matrix is not None else []
+    if not isinstance(specs,(list,tuple)):raise ModelError('Visual contexts must be a list of matrix specifications')
+    landings=[_landing_context(model,owner,spec,analysis,progress) for spec in specs]
+    if len({c['matrix_id'] for c in landings})!=len(landings):raise ModelError('Select each visual context once')
+    landing=landings[0] if len(landings)==1 else None
     candidates=copy.deepcopy(row['candidates'])
     for c in candidates:
         c['title']='; '.join(dict.fromkeys(RULES[s['rule']]['title'] for s in c['steps']))
         if c['combined']:c['title']='Combined proposal: '+c['title']
-        if landing:c['dag_comparison']['context']={'landing_visual':landing['spec'],'selected_measure_id':owner.id}
+        if landings:c['dag_comparison']['context']={'landing_visuals':[c['spec'] for c in landings],'selected_measure_id':owner.id}
     diagnostics=list(row['diagnostics'])
     if not candidates and not diagnostics:
         diagnostics.append('No guarded rule matched this root expression. Helpers are inspected as dependencies, not automatically rewritten. No timing or optimality conclusion follows.')
@@ -153,14 +183,15 @@ def review_measure(source, measure, *, table=None, analysis=None, progress=None,
         'scope':'root-expression-only','expression':owner.expression,'original_dag':original,
         'diagnostics':diagnostics,'candidates':candidates,'validation_alias':alias,
         'affected_downstream_measures':list(row['affected_downstream_measures']),
-        'validation_status':'not_run','performance_status':'unknown','landing_visual':landing})
+        'validation_status':'not_run','performance_status':'unknown','landing_visual':landing,'landing_visuals':landings})
 
 
-def write_measure_proposal(model, measure, expression, directory, *, graph=None, landing_visual=None):
+def write_measure_proposal(model, measure, expression, directory, *, graph=None, landing_visual=None, landing_visuals=None):
     """Export a user-authored comparison, DAX and a scalar-total probe only."""
     owner=model.measure(measure)
     comparison=compare_measure_dags(model,owner.id,proposed_expression=expression,graph=graph)
-    if landing_visual:comparison['context']={'landing_visual':landing_visual['spec'],'selected_measure_id':owner.id}
+    landings=landing_visuals if landing_visuals is not None else [landing_visual] if landing_visual else []
+    if landings:comparison['context']={'landing_visuals':[c['spec'] for c in landings],'selected_measure_id':owner.id}
     root=Path(directory);files=write_dag_comparison(comparison,root)
     (root/'proposed.dax').write_text(expression,encoding='utf-8')
     alias='__sh_focus_custom'
@@ -171,6 +202,6 @@ def write_measure_proposal(model, measure, expression, directory, *, graph=None,
     if valid:
         files['validation']=root/'validate-total.dax'
         files['validation'].write_text(_validation_query(owner.table,owner.name,expression,alias),encoding='utf-8')
-        _write_landing_queries(root,owner.table,owner.name,expression,alias,landing_visual)
+        _write_visual_queries(root,owner.table,owner.name,expression,alias,landings)
     files['validation_reason']=None if valid else 'Validation queries withheld: the proposed dependency chain is incomplete or cyclic.'
     return files

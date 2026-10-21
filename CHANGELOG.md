@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0
+
+- Make the primary workflow Select measure -> optional visual checkboxes -> Create new measure, with copy/download output and advanced proposal details collapsed.
+- Create a collision-free new measure definition, measure JSON, before/after DAGs, offline report and downloadable package without modifying the original model or helpers.
+- Prefer a bounded combined guarded rewrite; explicitly label an unchanged copy when no supported rewrite applies. Missing definitions block creation; incomplete chains withhold validation queries.
+- Retain multiple selected visuals as independent contexts and export separate representative queries without merging their filters or baking them into DAX.
+- Add create_measure / CreatedMeasure to the library, a create-measure CLI command with repeatable --visual, and plural contexts in root-only review. Preserve the single-context API.
+
 ## 0.12.0
 
 - Limit Studio’s optional visual picker to matrices that directly display the selected measure, with the same binding check on the server. Select one visual or continue without any.

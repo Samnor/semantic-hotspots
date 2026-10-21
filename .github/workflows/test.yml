@@ -23,6 +23,7 @@ jobs:
       - run: python -m semantic_hotspots analyze examples/retail.bim -o smoke-report
       - run: python -m semantic_hotspots optimize-measure examples/rewrite-lab.bim "Revenue iterator" --table Sales -o smoke-measure
       - run: python -m semantic_hotspots optimize-measure src/semantic_hotspots/assets/demo.bim "Revenue iterator" --table Sales --matrices src/semantic_hotspots/assets/demo-matrices.json --landing-matrix monthly-margin -o smoke-landing-measure
+      - run: python -m semantic_hotspots create-measure src/semantic_hotspots/assets/demo.bim "Revenue iterator" --table Sales --matrices src/semantic_hotspots/assets/demo-matrices.json --visual iterator-review -o smoke-created-measure
       - run: python -m semantic_hotspots simulate examples/retail.bim --fact-rows 1000 --dimension-rows 50 -o smoke-simulation
       - run: python -m semantic_hotspots simulate examples/rewrite-lab.bim --config examples/rewrite-config.json --fact-rows 1000 -o smoke-rewrite-lab
       - run: python -m semantic_hotspots experiment smoke-rewrite-lab -o smoke-rewrites

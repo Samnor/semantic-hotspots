@@ -76,6 +76,13 @@ def main(argv: list[str] | None = None) -> int:
     focus.add_argument('--matrices', type=Path, help='Optional matrix specifications or PBIR report folder')
     focus.add_argument('--landing-matrix', help='Explicit optional landing matrix ID; requires --matrices')
     focus.add_argument('-o', '--output', type=Path, default=Path('measure-review'))
+    create = commands.add_parser('create-measure', help='Create a new named measure from one root and optional visual contexts')
+    create.add_argument('model', type=Path)
+    create.add_argument('measure')
+    create.add_argument('--table')
+    create.add_argument('--matrices', type=Path)
+    create.add_argument('--visual', action='append', default=[], help='Optional visual ID; repeat for multiple contexts')
+    create.add_argument('-o', '--output', type=Path, default=Path('new-measure'))
     mock = commands.add_parser('simulate', help='Generate seeded mock CSVs, an isolated Import BIM, workloads and HTML; does not execute DAX')
     mock.add_argument('model', type=Path)
     mock.add_argument('-o', '--output', type=Path, default=Path('synthetic-lab'))
@@ -259,6 +266,16 @@ def main(argv: list[str] | None = None) -> int:
             incomplete = any(not case['rows'] for case in result.cases) or any('expected ' in d or 'failed or timed out' in d for d in result.diagnostics)
             return 1 if failed or incomplete else 0
         model = load_model(args.model)
+        if args.command == 'create-measure':
+            from .creation import create_measure
+            if bool(args.matrices)!=bool(args.visual):raise ModelError('Supply --matrices and at least one --visual together, or neither')
+            specs=load_matrices(args.matrices) if args.matrices else []
+            by_id={s.id:s for s in specs}
+            if any(v not in by_id for v in args.visual):raise ModelError('A requested visual context was not found')
+            result=create_measure(model,args.measure,table=args.table,visuals=[by_id[v] for v in args.visual])
+            files=result.write(args.output)
+            print(f'New measure: {result.data["name"]}\n{result.data["explanation"]}\nDAX: {files["dax"].resolve()}\nHTML: {files["html"].resolve()}\nSource model unchanged.')
+            return 0
         if args.command == 'optimize-measure':
             from .focus import review_measure
             if bool(args.matrices)!=bool(args.landing_matrix):
