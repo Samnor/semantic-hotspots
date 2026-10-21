@@ -532,7 +532,12 @@ def _matches(tree, text, model, notes=None):
             if (table.operation == 'scan' and column.operation == 'column'
                     and column.table == table.table and column.result_type in _NUMERIC
                     and _physical(table, model) and _physical(column, model)):
-                matches.append(('OPT001', node.start, node.end, f'SUM({text[column.start:column.end]})'))
+                reference = text[column.start:column.end]
+                # Removing the iterator also removes its row-column scope. A
+                # bare name must retain its bound identity, not bind again in
+                # the measure's home table after the rewrite.
+                if reference.startswith('['):reference = model.entities[column.target].qualified_name
+                matches.append(('OPT001', node.start, node.end, f'SUM({reference})'))
             filtered = table
             if table.operation == 'variable_reference' and table.target in definitions:
                 filtered = _plain(definitions[table.target])

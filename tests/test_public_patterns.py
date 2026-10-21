@@ -15,6 +15,17 @@ def fixture(expression):
 
 
 class PublicPatternTests(unittest.TestCase):
+    def test_removed_iterator_qualifies_its_bare_column_binding(self):
+        model = fixture('SUMX(Adjustments,[Quantity])')
+        model.add_table('Adjustments')
+        from semantic_hotspots.model import Entity
+        model.add(Entity('column', 'Adjustments', 'Quantity', metadata={'data_type': 'int64'}))
+        candidate = plan_rewrites(model, measure='Result').candidates[0]
+        self.assertEqual(candidate['after'], "SUM('Adjustments'[Quantity])")
+        before_column = candidate['logical_before']['children'][1]['target']
+        after_column = candidate['logical_after']['children'][0]['target']
+        self.assertEqual(before_column, after_column)
+
     def test_column_only_arguments_bind_local_columns(self):
         for expr in ['SUM([Quantity])', 'AVERAGE([Quantity])', 'COUNTA([Label])',
                      'COUNT([Quantity])', 'DISTINCTCOUNT([Quantity])',

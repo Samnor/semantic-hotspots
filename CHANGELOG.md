@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.1
+
+- Qualify a bound bare iterator column when removing SUMX, so SUM cannot rebind the name to a different column in the measure home table. Add a cross-table name-collision regression. Existing corpus proposals are unchanged.
+
 ## 0.18.0
 
 - Bind unqualified home-table columns only in supported column argument positions; recognize AVERAGE, COUNT/COUNTA, DISTINCTCOUNT and single-argument ALL without allowing naked scalar column references.
