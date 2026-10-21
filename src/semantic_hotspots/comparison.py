@@ -246,9 +246,11 @@ def _svg(graph, wanted=None, highlights=None):
     for e in edges:
         x,y=positions[e['from']];a,b=positions[e['to']]
         if depth[e['to']] - depth[e['from']] > 1:
-            x+=250;y+=31;a+=250;b+=31
+            x+=125;y+=62;a+=125
             lane=width-8-(long_edges%3)*10;long_edges+=1
-            svg.append(f'<path d="M{x} {y} C{x+16} {y} {lane} {y} {lane} {y+20} L{lane} {b-20} C{lane} {b} {a+16} {b} {a} {b}" fill="none" stroke="#72908a"/><path d="M{a+6} {b-4} L{a} {b} L{a+6} {b+4}" fill="none" stroke="#72908a"/>')
+            # Horizontal portions stay between layers, including on arrival:
+            # a direct side entry could pass through a sibling in the same row.
+            svg.append(f'<path d="M{x} {y} L{x} {y+18} L{lane} {y+18} L{lane} {b-20} L{a} {b-20} L{a} {b}" fill="none" stroke="#72908a"/><path d="M{a-4} {b-6} L{a} {b} L{a+4} {b-6}" fill="none" stroke="#72908a"/>')
         else:
             x+=125;y+=62;a+=125
             svg.append(f'<path d="M{x} {y} C{x} {y+22} {a} {b-22} {a} {b}" fill="none" stroke="#72908a"/><path d="M{a-4} {b-6} L{a} {b} L{a+4} {b-6}" fill="none" stroke="#72908a"/>')
