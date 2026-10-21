@@ -10,6 +10,7 @@ from pathlib import Path
 
 from semantic_hotspots import ModelError, create_measure, parse_model, review_measure
 from semantic_hotspots.cli import main
+from semantic_hotspots.model import Entity
 from test_focus import source
 
 
@@ -20,6 +21,43 @@ def visual(identity='north', value='North'):
 
 
 class CreateMeasureTests(unittest.TestCase):
+    def test_desktop_definition_and_query_preview_have_distinct_formats_and_instructions(self):
+        created=create_measure(source(),'Chosen')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/'new';files=created.write(root)
+            definition=files['dax'].read_text(encoding='utf-8')
+            query=files['query'].read_text(encoding='utf-8')
+            self.assertTrue(definition.startswith('Chosen (candidate) =\n'))
+            self.assertIn("DEFINE\n    MEASURE 'Sales'[Chosen (candidate)] =\nSUM(Sales[Amount])\n\nEVALUATE",query)
+            self.assertIn('ROW("Value", \'Sales\'[Chosen (candidate)])',query)
+            self.assertIn('not a runnable DAX query',(root/'HOW-TO-USE.txt').read_text(encoding='utf-8'))
+            self.assertIn('DAX Studio query (preview)',files['html'].read_text(encoding='utf-8'))
+            with zipfile.ZipFile(files['zip']) as z:
+                self.assertIn('preview-query.dax',z.namelist());self.assertIn('HOW-TO-USE.txt',z.namelist())
+
+    def test_preview_keeps_escaping_and_expression_ending_with_a_line_comment(self):
+        data={'model':{'tables':[{'name':"Team's Totals",'measures':[{'name':'Résumé value','expression':'1 // preserve trailing comment'}]}]}}
+        created=create_measure(data,'Résumé value')
+        with tempfile.TemporaryDirectory() as tmp:
+            query=created.write(Path(tmp)/'new')['query'].read_text(encoding='utf-8')
+            qualified=Entity('measure',"Team's Totals",created.data['name']).qualified_name
+            self.assertIn('MEASURE '+qualified+' =\n1 // preserve trailing comment\n\nEVALUATE',query)
+            self.assertIn('ROW("Value", '+qualified+')',query)
+            self.assertEqual(query.count('EVALUATE'),1)
+
+    def test_preview_does_not_enable_withheld_validation_or_rewrite_the_source(self):
+        data=source();data['model']['tables'][0]['measures'][0]['expression']='VAR x = TODAY() RETURN [Missing] + x'
+        before=copy.deepcopy(data);created=create_measure(data,'Chosen')
+        self.assertFalse(created.data['validation_available']);self.assertEqual(created.data['outcome'],'unchanged_copy')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/'new';files=created.write(root)
+            query=files['query'].read_text(encoding='utf-8')
+            self.assertIn(created.data['expression'],query)
+            self.assertIn('scalar preview only',query);self.assertIn('Not a correctness comparison',query)
+            self.assertFalse((root/'validate-total.dax').exists())
+            with zipfile.ZipFile(files['zip']) as z:self.assertNotIn('validate-total.dax',z.namelist())
+        self.assertEqual(data,before)
+
     def test_creates_a_new_named_root_with_rewritten_dax_without_changing_any_existing_object(self):
         model=parse_model(source());before=copy.deepcopy(model)
         result=create_measure(model,'Chosen').data

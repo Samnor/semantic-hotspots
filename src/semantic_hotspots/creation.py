@@ -41,6 +41,15 @@ def _new_name(model, owner):
     return name
 
 
+def _preview_query(table, name, expression):
+    qualified=Entity('measure',table,name).qualified_name
+    return ('// DAX Studio / Power BI DAX query view: scalar preview only.\n'
+            '// Defines a temporary measure for this query; does not save it in the model.\n'
+            '// Not a correctness comparison or a benchmark. Run against the source model.\n'
+            'DEFINE\n    MEASURE '+qualified+' =\n'+expression+'\n\n'
+            'EVALUATE\nROW("Value", '+qualified+')\n')
+
+
 @dataclass
 class CreatedMeasure:
     data: dict
@@ -52,7 +61,19 @@ class CreatedMeasure:
         root.mkdir(parents=True,exist_ok=True)
         d=self.data
         (root/'new-measure.dax').write_text(d['definition'],encoding='utf-8')
+        (root/'preview-query.dax').write_text(_preview_query(d['table'],d['name'],d['expression']),encoding='utf-8')
         (root/'expression.dax').write_text(d['expression'],encoding='utf-8')
+        (root/'HOW-TO-USE.txt').write_text(
+            'Power BI Desktop measure\n'
+            'Choose New measure in table '+d['table']+' and paste new-measure.dax.\n'
+            'This file contains a measure definition, not a runnable DAX query.\n\n'
+            'DAX Studio / Power BI DAX query view\n'
+            'Connect to the source model, open preview-query.dax and run it.\n'
+            'It contains DEFINE MEASURE and EVALUATE and returns one scalar total.\n'
+            'The temporary measure exists only for this query; the model is not updated.\n'
+            'This preview has not been executed or validated. It may fail if definitions or model context are missing.\n'
+            'A returned value does not establish equivalence or improved performance.\n\n'
+            'Validation queries, when available, are separate files and remain subject to the reported guards.\n',encoding='utf-8')
         (root/'measure.json').write_text(json.dumps(d['measure_object'],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
         (root/'created-measure.json').write_text(json.dumps(d,ensure_ascii=False,indent=2,allow_nan=False)+'\n',encoding='utf-8')
         write_dag_comparison(d['dag_comparison'],root/'dags')
@@ -62,14 +83,14 @@ class CreatedMeasure:
         elif d['visual_contexts']:
             (root/'visual-contexts.json').write_text(json.dumps(d['visual_contexts'],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
         esc=lambda x:html.escape(str(x),quote=True)
-        links='<a href="new-measure.dax" download>Download new measure</a> · <a href="dags/report.html">Original and new measure DAGs</a>'
+        links='<a href="new-measure.dax" download>Download Power BI measure</a> · <a href="preview-query.dax" download>Download DAX Studio query (preview)</a> · <a href="dags/report.html">Original and new measure DAGs</a>'
         if d['validation_available']:links+=' · <a href="validate-total.dax" download>Total validation query</a>'
         if (root/'visual-context-queries.zip').is_file():links+=' · <a href="visual-context-queries.zip" download>Visual contexts and queries</a>'
-        (root/'report.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New measure</title><style>body{font:16px/1.6 system-ui;margin:40px auto;padding:0 20px;max-width:950px;color:#18333d}pre{background:#f2f6f5;padding:20px;white-space:pre-wrap;overflow-wrap:anywhere}a{color:#087568}</style><h1>'+esc(d['name'])+'</h1><p>'+esc(d['explanation'])+'</p><pre>'+esc(d['definition'])+'</pre><p>'+links+'</p><p>Create a new measure in table '+esc(d['table'])+' and paste the definition above. The original model and helper definitions are unchanged.</p><p>'+str(len(d['visual_contexts']))+' selected visual contexts. Their filters remain separate and are not baked into the new expression. Helpers remain dependencies in the same model.</p><p>Correctness: not tested · Performance: unknown</p><ul>'+''.join('<li>'+esc(w)+'</li>' for w in d['diagnostics'])+'</ul>',encoding='utf-8')
+        (root/'report.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New measure</title><style>body{font:16px/1.6 system-ui;margin:40px auto;padding:0 20px;max-width:950px;color:#18333d}pre{background:#f2f6f5;padding:20px;white-space:pre-wrap;overflow-wrap:anywhere}a{color:#087568}</style><h1>'+esc(d['name'])+'</h1><p>'+esc(d['explanation'])+'</p><pre>'+esc(d['definition'])+'</pre><p>'+links+'</p><p>Create a new measure in table '+esc(d['table'])+' and paste the definition above. The original model and helper definitions are unchanged.</p><p>For DAX Studio or Power BI DAX query view, use preview-query.dax. The measure definition alone is not a query. This preview returns one scalar total without saving a measure; it is not a correctness comparison or benchmark.</p><p>'+str(len(d['visual_contexts']))+' selected visual contexts. Their filters remain separate and are not baked into the new expression. Helpers remain dependencies in the same model.</p><p>Correctness: not tested · Performance: unknown</p><ul>'+''.join('<li>'+esc(w)+'</li>' for w in d['diagnostics'])+'</ul>',encoding='utf-8')
         with zipfile.ZipFile(root/'new-measure.zip','w',zipfile.ZIP_DEFLATED) as z:
             for path in sorted(root.rglob('*')):
                 if path.is_file() and path.name!='new-measure.zip':z.write(path,path.relative_to(root).as_posix())
-        return {'html':root/'report.html','json':root/'created-measure.json','dax':root/'new-measure.dax','zip':root/'new-measure.zip'}
+        return {'html':root/'report.html','json':root/'created-measure.json','dax':root/'new-measure.dax','query':root/'preview-query.dax','zip':root/'new-measure.zip'}
 
 
 def _create_from_review(model, review, *, progress=None):
