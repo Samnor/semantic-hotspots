@@ -76,6 +76,12 @@
           {
             "name": "Order calculation",
             "expression": "SUMX(VALUES(Sales[OrderKey]), CALCULATE([Revenue]))"
+          },
+          {
+            "name": "Revenue iterator",
+            "expression": "SUMX(Sales, Sales[Amount])",
+            "formatString": "#,##0.00",
+            "description": "Fictional root-only rewrite example for the measure workflow."
           }
         ]
       },

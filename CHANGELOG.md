@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0
+
+- Add a searchable Optimize one measure flow in Studio, with direct actions on ranked rows and no matrix requirement.
+- Show root-only proposals, original DAX/helper lineage, paired DAGs and copy/download actions; explain when no supported automatic rule applies.
+- Compare user-authored proposals for the selected root and download explicit scalar-total value/BLANK probes without executing queries or changing model definitions.
+- Add optimize-measure, review_measure and measure/table scoping in plan_rewrites. Reuse completed analysis in Studio and include a fictional SUMX-to-SUM demo measure.
+
 ## 0.9.1
 
 - Replace the generic Studio busy message with actual analysis stages, current objects/measures, known item counts, stage/total elapsed time and a persistent completion/failure summary.

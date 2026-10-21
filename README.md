@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.9.1/semantic_hotspots-0.9.1-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.10.0/semantic_hotspots-0.10.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.9.1"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.10.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -51,6 +51,34 @@ This explicit action downloads the pinned official Microsoft ADOMD 19.118.3 pack
 Studio binds only to `127.0.0.1`, uses a session token and same-origin POST checks, and serves only registered generated artifacts. Model/source data is not uploaded; the SDK setup button is the explicit external download. Generated files remain under `.semantic-hotspots-ui` by default. Use `-o OUTPUT` to choose another directory, `--no-browser` to print the local URL, and Ctrl+C to stop the server. The GUI is local; it is not a multi-user hosted service.
 
 The guided runner is covered by synthetic orchestration, HTTP and browser-flow checks. Its engine workflow has not yet been rerun end-to-end in live Desktop. The earlier Windows integration check below exercised the exporter and direct-client foundations with manual orchestration.
+
+## Optimize one selected measure
+
+After **Analyze model**, use **Optimize one measure** above the matrix workflow:
+
+1. Search all measures by name or table and choose exactly one.
+2. Click **Find improvements**, or use **Optimize this measure** on a ranked row.
+3. Choose a proposal to see its DAX, copy/download it, and compare the complete original/proposed DAGs.
+4. Download the proposal’s total validation query and test it against the same loaded model before applying any edit. Check actual report contexts and timings separately.
+
+No matrix is required. Only the selected measure’s proposed expression changes; helper definitions remain context. Unsupported syntax, incomplete dependencies or unmatched rules produce an explicit explanation, not a claim that the measure is optimal. You can also paste your own proposed expression under **Compare my own proposed DAX**. This compares graphs without applying or validating the edit. In the bundled demo, choose **Sales · Revenue iterator** to inspect a guarded `SUMX → SUM` proposal.
+
+The downloaded validation query uses a collision-free [query-scoped DEFINE MEASURE](https://learn.microsoft.com/en-us/dax/define-statement-dax). Run it using **Run** in [Power BI Desktop’s DAX query view](https://learn.microsoft.com/en-us/power-bi/transform-model/dax-query-view) or a compatible client. `Equal = 1` covers only the scalar total and its BLANK flags; all-BLANK results are insufficient evidence. Running the query creates no persistent measure. Updating the model is a separate Desktop action. The tool does not execute this new probe or infer correctness, speedup, or equivalence across grouped/filtered/report contexts.
+
+The same root-only review is available without Studio:
+
+```powershell
+python -m semantic_hotspots optimize-measure model.bim "Revenue" --table Sales -o revenue-review
+```
+
+```python
+from semantic_hotspots import review_measure
+
+review = review_measure("model.bim", "Revenue", table="Sales")
+review.write("revenue-review")  # Choose an absent or empty output directory.
+```
+
+Open `revenue-review/report.html`. It includes exact original DAX, the full original chain, diagnostics and only this measure’s proposals. Each proposal has paired DAG exports, proposed DAX and a total validation query. Source models stay unchanged. `plan_rewrites(..., measure="Revenue", table="Sales")` also restricts rule evaluation to one root.
 
 ## Analyze a semantic model
 
@@ -259,7 +287,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.9.1/semantic_hotspots-0.9.1-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.10.0/semantic_hotspots-0.10.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -569,7 +597,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.9.1.
+MIT licensed. Version 0.10.0.
 
 ## Contributing and data handling
 

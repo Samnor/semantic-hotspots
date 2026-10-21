@@ -283,11 +283,13 @@ class RewritePlan:
         return {'json': root/'rewrite-plan.json', 'html': root/'rewrites.html'}
 
 
-def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None):
+def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure=None, table=None):
     """Propose isolated edits and a bounded fixed-point combination per measure."""
     model = parse_model(source) if isinstance(source, dict) else source if isinstance(source, Model) else load_model(source)
     graph = graph or DependencyGraph(model, progress=progress)
-    measures = list(model.measures)
+    if table is not None and measure is None:
+        raise ModelError('A table qualifier requires a selected measure')
+    measures = [model.measure(measure,table)] if measure is not None else list(model.measures)
     if ranked_ids is not None:
         positions = {n: i for i, n in enumerate(ranked_ids)}
         measures.sort(key=lambda m: positions.get(m.id, len(positions)))

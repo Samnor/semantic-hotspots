@@ -170,5 +170,29 @@ class StudioTests(unittest.TestCase):
         self.assertTrue(any(m['eligible'] for m in state['matrices']))
         self.assertTrue(any(not m['eligible'] for m in state['matrices']))
 
+    def test_one_measure_workflow_needs_no_matrix_and_retains_only_selected_proposals(self):
+        studio=self.server.studio
+        with self.assertRaises(ModelError):studio.dispatch('measure',{'measure':'anything'})
+        studio.dispatch('demo',{})
+        studio.specs=[]
+        original=[m.expression for m in studio.model.measures]
+        owner=studio.model.measure('Revenue iterator','Sales')
+        with patch('semantic_hotspots.focus.plan_rewrites',side_effect=AssertionError('Unexpected replan')):
+            studio.dispatch('measure',{'measure':owner.id})
+        result=studio.snapshot()['measure_review']
+        self.assertEqual(result['measure_id'],owner.id);self.assertEqual(len(result['candidates']),1)
+        self.assertEqual(result['candidates'][0]['after'],'SUM(Sales[Amount])')
+        self.assertIsNone(studio.snapshot()['project'])
+        status,body,_=self.request('GET',result['candidates'][0]['validation'],headers=self.headers)
+        self.assertEqual(status,200);self.assertIn(b'ISBLANK',body)
+        studio.dispatch('measure-proposal',{'measure':owner.id,'expression':'SUM(Sales[Amount]) + 0'})
+        custom=studio.snapshot()['measure_review']['custom'];self.assertIn('/proposal/',custom['url'])
+        with self.assertRaises(ModelError):studio.dispatch('measure-proposal',{'measure':'another','expression':'1'})
+        studio.dispatch('measure',{'measure':studio.model.measure('Revenue').id})
+        self.assertFalse(studio.snapshot()['measure_review']['candidates'])
+        self.assertIsNone(studio.snapshot()['measure_review']['custom'])
+        self.assertEqual([m.expression for m in studio.model.measures],original)
+        studio.dispatch('demo',{});self.assertIsNone(studio.snapshot()['measure_review'])
+
 
 if __name__=='__main__':unittest.main()
