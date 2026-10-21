@@ -192,7 +192,7 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
     reference_diagnostics = {n: infos[n].diagnostics for n in sorted(wanted) if n in infos and infos[n].diagnostics}
     reference_blockers = {n: infos[n].reference_blockers for n in sorted(wanted) if n in infos and infos[n].reference_blockers}
     missing = [n for n in sorted(wanted) if model.entities[n].kind == 'measure'
-               and not overrides.get(n, model.entities[n].expression)]
+               and not (overrides.get(n, model.entities[n].expression) or '').strip()]
     return {'schema_version': '1.0', 'kind': 'static-computation-dag', 'root': owner.id,
             'edge_meaning': 'consumer -> dependency; argument numbers describe syntax, not engine execution order',
             'is_acyclic': ordered is not None, 'evaluation_order': ordered,

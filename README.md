@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.15.0/semantic_hotspots-0.15.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.16.0/semantic_hotspots-0.16.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.15.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.16.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -36,7 +36,7 @@ The command opens a local browser interface. Select a PBIP, BIM or TMDL model wi
 
 During analysis, a persistent activity panel shows the actual stage, current measure/object, completed-item counts where known, elapsed time and completed stages. Model reading, dependency tracing, rule/ranking review, rewrite checks, matrix grain review and report writing have separate checkpoints. A responsive Studio with no new work checkpoint is distinguished from a lost browser connection. Remaining time is unknown; no overall percentage or ETA is fabricated. Completion and failures remain visible, with a link to findings or an analysis retry. Matrix eligibility checks reuse the same request’s analysis instead of repeatedly reanalyzing every measure.
 
-Studio starts with measure selection and **Create new measure**. If no automatic rewrite applies, the result says **Unchanged copy**, explains the coverage gap or blocker, and repeats that explanation above the paired DAGs. Matching DAGs in this case are expected and do not mean the original is optimal. Reference-binding failures identify the owning measure, reference and source location where available. Scope-analysis limitations are separate from detected cycles and missing definitions. `TODAY`, `NOW`, `RAND` and `RANDBETWEEN` retain a controlled-evaluation guard; that guard is not an error in the source DAX. Visual contexts are optional and default to none; select any matching matrices with checkboxes. Initial analysis ranks measures and defers rewrite checks until creation. Copy or download the new named DAX for the same model. The separate advanced summary-table workflow generates a PBIP ZIP for one matrix. Open and refresh that project explicitly in Desktop, find the loaded model, choose it using the matching-definition hint, then click **Validate, then benchmark**. A matching hint does not auto-select or fully attest a loaded model.
+Studio starts with measure selection and **Create new measure**. If no automatic rewrite applies, the result says **Unchanged copy**, explains the coverage gap or blocker, and repeats that explanation above the paired DAGs. Matching DAGs in this case are expected and do not mean the original is optimal. Reference-binding failures identify the owning measure, reference and source location where available. Scope-analysis limitations are separate from detected cycles and missing definitions. `TODAY()` remains live in the generated production measure. Validation packages freeze both paths and known date-dependent helpers through query-scoped definitions at explicit as-of dates. `NOW`, `RAND`, `RANDBETWEEN`, stored calculated clocks and ambiguous references retain their guards. Visual contexts are optional and default to none; select any matching matrices with checkboxes. Initial analysis ranks measures and defers rewrite checks until creation. Copy or download the new named DAX for the same model. The separate advanced summary-table workflow generates a PBIP ZIP for one matrix. Open and refresh that project explicitly in Desktop, find the loaded model, choose it using the matching-definition hint, then click **Validate, then benchmark**. A matching hint does not auto-select or fully attest a loaded model.
 
 Optionally choose a native **Performance Analyzer version 1.0.0 JSON export** when opening a model. Known recorded DAX contexts sort first; unknown contexts retain static priority. Measure associations use bound query references, and matrix associations require an exact unambiguous visual ID. Titles are not fuzzy-matched. These are inclusive/shared DSE wall-clock query durations through first row, not isolated measure cost, full result-reading time, CPU or FE/SE. Missing/truncated events and query-scoped bindings stay explicit. See Microsoft's [export schema](https://github.com/microsoft/powerbi-desktop-samples/blob/main/Performance%20Analyzer/performanceAnalyzerExport.schema.json) and [event-format documentation](https://github.com/microsoft/powerbi-desktop-samples/blob/main/Performance%20Analyzer/Power%20BI%20Performance%20Analyzer%20Export%20File%20Format.docx). Recordings are read offline and never executed.
 
@@ -50,7 +50,28 @@ This explicit action downloads the pinned official Microsoft ADOMD 19.118.3 pack
 
 Studio binds only to `127.0.0.1`, uses a session token and same-origin POST checks, and serves only registered generated artifacts. Model/source data is not uploaded; the SDK setup button is the explicit external download. Generated files remain under `.semantic-hotspots-ui` by default. Use `-o OUTPUT` to choose another directory, `--no-browser` to print the local URL, and Ctrl+C to stop the server. The GUI is local; it is not a multi-user hosted service.
 
-The guided runner is covered by synthetic orchestration, HTTP and browser-flow checks. Its engine workflow has not yet been rerun end-to-end in live Desktop. The earlier Windows integration check below exercised the exporter and direct-client foundations with manual orchestration.
+Guided workflows have automated orchestration, HTTP and desktop/mobile browser checks. Live engine integration evidence is bounded to the fictional scenarios described below; CI does not launch Power BI Desktop or execute DAX.
+
+### Date-dependent measures and missing helpers
+
+`TODAY()` is not a blanket rewrite blocker. Created measures keep their live clock. The package includes `date-controls.json` and separate `validation-dates/YYYY-MM-DD/` queries that override the original, candidate, and date-dependent helper measures and their callers for that query only. Stored callers are re-declared because a helper override alone does not replace already-compiled references. Defaults cover today, this month’s boundaries, and this year’s boundaries. Add the relevant planning-period and leap-day dates yourself. These finite comparisons do not establish universal equivalence or speedup. Stored calculated tables/columns using a clock cannot be frozen by measure overrides.
+
+```powershell
+python -m semantic_hotspots create-measure model.bim "Selected measure" --table Measures --as-of 2024-02-29 --as-of 2025-01-01 --definitions matching-export.bim -o measure-review
+```
+
+A missing helper definition does not prevent a local simplification that leaves its callback and context intact. For example, a stored `FILTER(t, NOT ISBLANK([@value]))` table variable passed to `SUMX(..., [@value])` can be replaced at that SUMX use with its base table variable. Other consumers of the filtered variable remain unchanged. This is a proposal, not an equivalence proof, and the engine may already optimize it.
+
+In Studio, expand **Recover missing helper definitions**, choose a matching BIM/TMDL export and import it, or find open Desktop models and explicitly choose the matching one. Live recovery requires the `[engine]` extra and Microsoft’s official ADOMD client. It reads table/column/measure metadata, requires an exact token match for the selected root, and never edits the loaded engine. Exports that contain the root must match too. Existing definitions are not overwritten, ambiguous names are rejected, and only reachable missing definitions and metadata are merged into a copy for analysis. No helper formula is invented. If a definition remains unavailable, its exact requirement stays visible and validation remains withheld.
+
+```python
+from semantic_hotspots import recover_helpers, create_measure
+
+recovery = recover_helpers("model.bim", "matching-export.bim", "Selected measure", table="Measures")
+created = create_measure(recovery.model, "Selected measure", table="Measures", validation_dates=["2024-02-29"])
+created.write("measure-review")
+```
+
 
 ## Create one new measure
 
@@ -65,7 +86,7 @@ After **Analyze model**:
 
 The result is a separately named measure, with a collision-free name and a complete `Name = expression` definition for Power BI Desktop’s New measure editor. It belongs in the indicated table of the same model. Its helper measures and source tables remain dependencies; the generated definition is not a standalone replacement semantic model. The original measure and every helper are unchanged. The downloadable ZIP contains the DAX, a measure JSON object (including the original static format string when present), an offline report, original/new DAGs and available unexecuted validation queries. Dynamic format expressions need separate review.
 
-The generator prefers the bounded combined guarded rewrite when one exists, otherwise an isolated guarded rewrite. This is a deterministic rule choice, not evidence of correctness or lower cost. If no guarded rewrite matches, it creates an **explicitly labeled unchanged copy**; it never invents an optimization or reports a speedup. Missing definitions block creation. Incomplete/cyclic chains retain their graphs but withhold validation probes.
+The generator prefers the bounded combined guarded rewrite when one exists, otherwise an isolated guarded rewrite. This is a deterministic rule choice, not evidence of correctness or lower cost. If no guarded rewrite matches, it creates an **explicitly labeled unchanged copy**; it never invents an optimization or reports a speedup. A missing root definition blocks creation. Missing helper definitions can still allow an independent local proposal; unresolved/ambiguous references and cycles retain their guards. Incomplete chains retain their graphs but withhold validation probes.
 
 Optional visuals are matched by explicit value slots bound to the selected measure’s table/name. Helper-only and visual-filter-only references do not count as displayed values. Report/page/title labels identify choices; duplicate labels include stable IDs and dynamic/hidden titles fall back to IDs. **Clear visual contexts** removes all selections. Their axes, filters, drill/total settings and unsupported flags remain separate: one visual’s filters are never intersected with another’s or baked into the new DAX. Supported reviewed contexts export representative baseline/candidate/BLANK-validation queries; partial or unsupported contexts retain diagnostics and withhold their queries. No query is executed by creation.
 
@@ -313,7 +334,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.15.0/semantic_hotspots-0.15.0-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.16.0/semantic_hotspots-0.16.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -391,7 +412,7 @@ The initial rule registry is deliberately small:
 | OPT002 | `FILTER(FILTER(Sales, p), q)` → `FILTER(Sales, (p) && (q))` | Same physical table; row-local comparisons of compatible columns/literals and Boolean combinations; no measures, calls, arithmetic or context changes inside predicates |
 | OPT003 | `SUMX(FILTER(t, NOT ISBLANK([@score])), [@score])` → `SUMX(t, [@score])` | `t` is a bound table variable; both column references bind to the same stored column; no measure callback or changed predicate |
 
-Recognized logical operations include scans, scoped physical/extension columns, measure references, lexical scalar/table variables, literals, parentheses, scalar binary operators, `SUM`, `SUMX`, `FILTER`, `VALUES`, `ADDCOLUMNS`, paired-name `SELECTCOLUMNS`, `COUNTROWS`, `ISEMPTY`, `MAX`/`MIN`, `YEAR`/`DATE`, `SWITCH`, `IF`, Boolean/blank tests, `DIVIDE`, and `CALCULATE`/`REMOVEFILTERS`. Temporary-column DAG references link to explicit definition nodes. Existing rewrites can run inside supported extension expressions without moving their row/filter context. This is **not a full DAX AST/compiler or executable physical planner**. Unknown table schemas, unsupported calls/types, incomplete/cyclic chains, calculation groups, model functions, dynamic root format expressions and random/time-dependent chains withhold proposals. `TODAY` has a recognized result type but still requires controlled evaluation before rewriting. No variable hoisting, join reordering, general filter pushdown, automatic pre-aggregation or runtime plan fusion is implemented. The search emits at most 32 isolated proposals and a 16-step bounded fixed-point combination per measure. No timing benefit is inferred: the DAX engine may already normalize the alternatives.
+Recognized logical operations include scans, scoped physical/extension columns, measure references, lexical scalar/table variables, literals, parentheses, scalar binary operators, `SUM`, `SUMX`, `FILTER`, `VALUES`, `ADDCOLUMNS`, paired-name `SELECTCOLUMNS`, `COUNTROWS`, `ISEMPTY`, `MAX`/`MIN`, `YEAR`/`DATE`, `SWITCH`, `IF`, Boolean/blank tests, `DIVIDE`, and `CALCULATE`/`REMOVEFILTERS`. Temporary-column DAG references link to explicit definition nodes. Existing rewrites can run inside supported extension expressions without moving their row/filter context. This is **not a full DAX AST/compiler or executable physical planner**. Unknown table schemas, unsupported calls, ambiguous references, cycles, calculation groups, model functions and dynamic root formats retain their guards. Independently guarded root-local rewrites can preserve known-but-undefined helpers and unknown surrounding column types without inferring their behavior. Those proposals remain unvalidated; actual helper definitions are required before comparison queries are exported. TODAY stays live in production and is frozen only in validation queries; NOW and random evaluation remain blocked. No variable hoisting, join reordering, general filter pushdown, automatic pre-aggregation or runtime plan fusion is implemented. The search emits at most 32 isolated proposals and a 16-step bounded fixed-point combination per measure. No timing benefit is inferred: the DAX engine may already normalize the alternatives.
 
 ```python
 from semantic_hotspots import analyze, plan_rewrites
@@ -626,7 +647,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.15.0.
+MIT licensed. Version 0.16.0.
 
 ## Contributing and data handling
 

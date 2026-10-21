@@ -73,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
     focus.add_argument('model', type=Path)
     focus.add_argument('measure')
     focus.add_argument('--table')
+    focus.add_argument('--as-of', action='append', help='Fixed validation date YYYY-MM-DD; repeat for boundary dates. Production TODAY() stays live')
+    focus.add_argument('--definitions', type=Path, help='Matching BIM/TMDL export containing actual missing helper definitions')
     focus.add_argument('--matrices', type=Path, help='Optional matrix specifications or PBIR report folder')
     focus.add_argument('--landing-matrix', help='Explicit optional landing matrix ID; requires --matrices')
     focus.add_argument('-o', '--output', type=Path, default=Path('measure-review'))
@@ -80,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument('model', type=Path)
     create.add_argument('measure')
     create.add_argument('--table')
+    create.add_argument('--as-of', action='append', help='Fixed validation date YYYY-MM-DD; repeat for boundary dates. Production TODAY() stays live')
+    create.add_argument('--definitions', type=Path, help='Matching BIM/TMDL export containing actual missing helper definitions')
     create.add_argument('--matrices', type=Path)
     create.add_argument('--visual', action='append', default=[], help='Optional visual ID; repeat for multiple contexts')
     create.add_argument('-o', '--output', type=Path, default=Path('new-measure'))
@@ -266,13 +270,16 @@ def main(argv: list[str] | None = None) -> int:
             incomplete = any(not case['rows'] for case in result.cases) or any('expected ' in d or 'failed or timed out' in d for d in result.diagnostics)
             return 1 if failed or incomplete else 0
         model = load_model(args.model)
+        if args.command in {'create-measure','optimize-measure'} and args.definitions:
+            from .helpers import recover_helpers
+            model=recover_helpers(model,args.definitions,args.measure,table=args.table).model
         if args.command == 'create-measure':
             from .creation import create_measure
             if bool(args.matrices)!=bool(args.visual):raise ModelError('Supply --matrices and at least one --visual together, or neither')
             specs=load_matrices(args.matrices) if args.matrices else []
             by_id={s.id:s for s in specs}
             if any(v not in by_id for v in args.visual):raise ModelError('A requested visual context was not found')
-            result=create_measure(model,args.measure,table=args.table,visuals=[by_id[v] for v in args.visual])
+            result=create_measure(model,args.measure,table=args.table,visuals=[by_id[v] for v in args.visual],validation_dates=args.as_of)
             files=result.write(args.output)
             print(f'New measure: {result.data["name"]}\n{result.data["explanation"]}\nDAX: {files["dax"].resolve()}\nHTML: {files["html"].resolve()}\nSource model unchanged.')
             return 0
@@ -284,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.matrices:
                 landing=next((s for s in load_matrices(args.matrices) if s.id==args.landing_matrix),None)
                 if landing is None:raise ModelError('Requested landing matrix was not found')
-            review=review_measure(model,args.measure,table=args.table,landing_matrix=landing)
+            review=review_measure(model,args.measure,table=args.table,landing_matrix=landing,validation_dates=args.as_of)
             files=review.write(args.output)
             print(f'Selected measure: {review.data["measure"]}\nRoot-only proposals: {len(review.data["candidates"])}\nHTML: {files["html"].resolve()}\nSource model unchanged. Correctness not tested; performance unknown.')
             return 0

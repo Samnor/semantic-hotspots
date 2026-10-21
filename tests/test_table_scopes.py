@@ -28,7 +28,7 @@ class TableScopeTests(unittest.TestCase):
         self.assertFalse(info.unresolved);self.assertFalse(info.reference_blockers)
         result=create_measure(model,'Total').data
         self.assertEqual(result['outcome'],'rewritten')
-        self.assertEqual(result['expression'],text.replace('SUMX(Sales,Sales[Amount])','SUM(Sales[Amount])'))
+        self.assertEqual(result['expression'],text.replace('SUMX(Sales,Sales[Amount])','SUM(Sales[Amount])').replace('SUMX(keptRows,[@score])','SUMX(scored, [@score])'))
         self.assertTrue(result['validation_available'])
         self.assertEqual(model,before)
         for key in ['original','proposed']:
@@ -160,7 +160,7 @@ class TableScopeTests(unittest.TestCase):
         result=create_measure(data,'Total').data
         self.assertEqual(result['outcome'],'unchanged_copy')
         self.assertEqual({x['code'] for x in result['dependency_issues']},{'missing_definition'})
-        self.assertIn('Controlled evaluation required for TODAY()',' '.join(result['diagnostics']))
+        self.assertIn('the generated measure keeps live TODAY()',' '.join(result['diagnostics']))
         self.assertTrue(result['dag_comparison']['original']['operator_complete'])
         self.assertFalse(result['dag_comparison']['original']['reference_blockers'])
         self.assertEqual(result['expression'],text)

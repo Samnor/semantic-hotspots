@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .comparison import compare_measure_dags, write_dag_comparison
-from .focus import review_measure, _validation_query, _write_visual_queries
+from .focus import review_measure, _write_validation_files
 from .matrices import MatrixSpec
 from .model import Entity, Model, ModelError
 from .parser import load_model, parse_model
@@ -73,17 +73,22 @@ class CreatedMeasure:
             'The temporary measure exists only for this query; the model is not updated.\n'
             'This preview has not been executed or validated. It may fail if definitions or model context are missing.\n'
             'A returned value does not establish equivalence or improved performance.\n\n'
-            'Validation queries, when available, are separate files and remain subject to the reported guards.\n',encoding='utf-8')
+            'Validation queries, when available, are separate files and remain subject to the reported guards.\n'
+            'For TODAY-dependent chains, validation-dates/YYYY-MM-DD contains fixed-date comparisons.\n'
+            'Both paths and date-dependent helpers are overridden for that query only; production TODAY stays live.\n'
+            'Review date-controls.json and add relevant period boundaries. Finite dates are not a universal proof.\n',encoding='utf-8')
         (root/'measure.json').write_text(json.dumps(d['measure_object'],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
         (root/'created-measure.json').write_text(json.dumps(d,ensure_ascii=False,indent=2,allow_nan=False)+'\n',encoding='utf-8')
         write_dag_comparison(d['dag_comparison'],root/'dags')
         if d['validation_available']:
-            (root/'validate-total.dax').write_text(_validation_query(d['table'],d['original_name'],d['expression'],d['name']),encoding='utf-8')
-            _write_visual_queries(root,d['table'],d['original_name'],d['expression'],d['name'],d['visual_contexts'])
+            _write_validation_files(root,d['table'],d['original_name'],d['expression'],d['name'],d['visual_contexts'],d.get('date_controls'))
         elif d['visual_contexts']:
             (root/'visual-contexts.json').write_text(json.dumps(d['visual_contexts'],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
         esc=lambda x:html.escape(str(x),quote=True)
         links='<a href="new-measure.dax" download>Download Power BI measure</a> · <a href="preview-query.dax" download>Download DAX Studio query (preview)</a> · <a href="dags/report.html">Original and new measure DAGs</a>'
+        if d.get('date_controls'):
+            (root/'date-controls.json').write_text(json.dumps(d['date_controls'],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+            links+=' · <a href="date-controls.json">Fixed-date validation settings</a>'
         if d['validation_available']:links+=' · <a href="validate-total.dax" download>Total validation query</a>'
         if (root/'visual-context-queries.zip').is_file():links+=' · <a href="visual-context-queries.zip" download>Visual contexts and queries</a>'
         (root/'report.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New measure</title><style>body{font:16px/1.6 system-ui;margin:40px auto;padding:0 20px;max-width:950px;color:#18333d}pre{background:#f2f6f5;padding:20px;white-space:pre-wrap;overflow-wrap:anywhere}a{color:#087568}</style><h1>'+esc(d['name'])+'</h1><p>'+esc(d['explanation'])+'</p><pre>'+esc(d['definition'])+'</pre><p>'+links+'</p><p>Create a new measure in table '+esc(d['table'])+' and paste the definition above. The original model and helper definitions are unchanged.</p><p>For DAX Studio or Power BI DAX query view, use preview-query.dax. The measure definition alone is not a query. This preview returns one scalar total without saving a measure; it is not a correctness comparison or benchmark.</p><p>'+str(len(d['visual_contexts']))+' selected visual contexts. Their filters remain separate and are not baked into the new expression. Helpers remain dependencies in the same model.</p><p>Correctness: not tested · Performance: unknown</p><ul>'+''.join('<li>'+esc(w)+'</li>' for w in d['diagnostics'])+'</ul>',encoding='utf-8')
@@ -111,11 +116,14 @@ def _create_from_review(model, review, *, progress=None):
     if any(e.kind=='format_string' and e.metadata.get('for_measure')==owner.id for e in model.entities.values()):
         diagnostics.append('The original dynamic format expression is not copied; review formatting separately.')
     complete=comparison['original']['dependency_complete'] and comparison['proposed']['dependency_complete']
+    controls=d.get('date_controls')
+    if controls and controls['blocked_reasons']:
+        complete=False;diagnostics.extend(controls['blocked_reasons'])
     blockers=comparison['original'].get('dependency_issues',[])
     if not complete:
         for issue in blockers:
             if issue['message'] not in diagnostics:diagnostics.append(issue['message'])
-        diagnostics.append('Validation queries withheld because reference binding, definitions, or dependency order are not fully established. See the specific blockers above.')
+        diagnostics.append('Validation queries need the actual helper definitions, complete reference binding, and controllable date evaluation. See the specific requirements above.')
     explanation = ('Created a new measure with '+str(len(chosen['steps']))+(' guarded simplification' if len(chosen['steps'])==1 else ' guarded simplifications')+'. Validate its results and performance before use.' if chosen else 'Created an unchanged copy. No supported guarded rewrite matched; no performance improvement is claimed.')
     reason_kind = ('rewritten' if chosen else 'incomplete_dependencies' if not complete else
                    'unsupported_syntax_or_semantics' if not comparison['original']['logical_subset_validated'] else
@@ -126,6 +134,8 @@ def _create_from_review(model, review, *, progress=None):
         explanation='Created an unchanged copy. The formula uses syntax or operations outside automatic rewrite coverage. See the reasons below; no performance improvement is claimed.'
     elif reason_kind=='guard_blocked':
         explanation='Created an unchanged copy. Automatic rewriting was withheld by a safety check. See the reasons below; no performance improvement is claimed.'
+    if chosen and not complete:
+        explanation+=' The local rewrite preserves helper calls; import the missing definitions before validating the complete measure.'
     comparison['creation'] = {'outcome':'rewritten' if chosen else 'unchanged_copy',
                               'explanation':explanation,'reason_kind':reason_kind,'reasons':diagnostics}
     measure_object={'name':created.name,'expression':expression}
@@ -137,11 +147,13 @@ def _create_from_review(model, review, *, progress=None):
         'selection_basis':'Bounded combined guarded rewrite, otherwise an isolated guarded rewrite; no timing-based selection.',
         'explanation':explanation,'reason_kind':reason_kind,
         'steps':copy.deepcopy(chosen['steps']) if chosen else [],'visual_contexts':contexts,
+        'date_controls':copy.deepcopy(controls),'guard_evidence':copy.deepcopy(chosen.get('guard_evidence')) if chosen else None,
+        'pending_helpers':copy.deepcopy(chosen.get('pending_helpers',[])) if chosen else [],
         'dag_comparison':comparison,'diagnostics':diagnostics,'dependency_issues':blockers,'validation_available':complete,
         'validation_status':'not_run','performance_status':'unknown'})
 
 
-def create_measure(source, measure, *, table=None, visuals=None, analysis=None, progress=None):
+def create_measure(source, measure, *, table=None, visuals=None, analysis=None, progress=None, validation_dates=None):
     """Create one separately named candidate, never changing the source model.
 
     Visuals must directly display this measure. They supply independent workload
@@ -150,5 +162,5 @@ def create_measure(source, measure, *, table=None, visuals=None, analysis=None, 
     model=source if isinstance(source,Model) else parse_model(source) if isinstance(source,dict) else load_model(source)
     owner=model.measure(measure,table)
     specs=_visuals_for_measure(model,owner,visuals)
-    review=review_measure(model,owner.id,analysis=analysis,progress=progress,landing_matrices=specs)
+    review=review_measure(model,owner.id,analysis=analysis,progress=progress,landing_matrices=specs,validation_dates=validation_dates)
     return _create_from_review(model,review,progress=progress)

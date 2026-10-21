@@ -16,6 +16,8 @@ from .model import Entity, Model, ModelError
 from .optimizer import RULES, plan_rewrites
 from .parser import load_model, parse_model
 from .progress import emit
+from .date_validation import date_controls, query_definitions
+from .date_validation import validation_dates as parse_validation_dates
 
 
 @dataclass
@@ -45,11 +47,16 @@ class MeasureReview:
             folder=root/'candidates'/c['id']
             write_dag_comparison(c['dag_comparison'],folder)
             (folder/'proposed.dax').write_text(c['after'],encoding='utf-8')
-            (folder/'validate-total.dax').write_text(_validation_query(data['table'],data['name'],c['after'],data['validation_alias']),encoding='utf-8')
-            _write_visual_queries(folder,data['table'],data['name'],c['after'],data['validation_alias'],landings)
+            available=c.get('validation_available',True) and not (data.get('date_controls') or {}).get('blocked_reasons')
+            if available:
+                _write_validation_files(folder,data['table'],data['name'],c['after'],data['validation_alias'],landings,data.get('date_controls'))
+            else:
+                (folder/'validation-requirements.json').write_text(json.dumps({'pending_helpers':c.get('pending_helpers',[]),
+                    'dependency_issues':data['original_dag']['dependency_issues'],'date_controls':data.get('date_controls')},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
             url='candidates/'+c['id']+'/'
-            context_link=(' · <a href="'+url+'visual-context-queries.zip" download>Visual context queries</a>') if landings else ''
-            items.append('<article><h3>'+esc(c['title'])+'</h3><p>Correctness: not tested · Performance: unknown</p><pre>'+esc(c['after'])+'</pre><p><a href="'+url+'report.html">Compare original and proposed DAGs</a> · <a href="'+url+'proposed.dax" download>Download proposed DAX</a> · <a href="'+url+'validate-total.dax" download>Download total validation query</a>'+context_link+'</p></article>')
+            context_link=(' · <a href="'+url+'visual-context-queries.zip" download>Visual context queries</a>') if landings and available else ''
+            validation_link=(' · <a href="'+url+'validate-total.dax" download>Total validation query</a>') if available else ' · Validation needs actual helper definitions or date controls'
+            items.append('<article><h3>'+esc(c['title'])+'</h3><p>Correctness: not tested · Performance: unknown</p><pre>'+esc(c['after'])+'</pre><p><a href="'+url+'report.html">Compare original and proposed DAGs</a> · <a href="'+url+'proposed.dax" download>Download proposed DAX</a>'+validation_link+context_link+'</p></article>')
         diagnostics=''.join('<li>'+esc(d)+'</li>' for d in data['diagnostics'])
         page=('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
               '<title>Optimize one measure</title><style>'+_CSS+DAG_CSS+'</style><main><h1>Optimize one measure</h1><h2>'+esc(data['measure'])+'</h2>'
@@ -65,7 +72,7 @@ class MeasureReview:
         return {'html':root/'report.html','json':root/'measure-review.json'}
 
 
-def _validation_query(table, name, expression, alias_name, workload=None):
+def _validation_query(table, name, expression, alias_name, workload=None, controls=None, as_of=None):
     original=Entity('measure',table,name).qualified_name
     alias=Entity('measure',table,alias_name).qualified_name
     fields=(f'"Original", {original},\n    "Candidate", {alias},\n'
@@ -76,10 +83,10 @@ def _validation_query(table, name, expression, alias_name, workload=None):
         if workload['query'].count(marker)!=1:raise ModelError('Unexpected landing query projection')
         query=workload['query'].replace(marker,fields)
     else:query='EVALUATE\nROW(\n    '+fields+'\n)\n'
-    return f'DEFINE MEASURE {alias} = {expression}\n'+query
+    return query_definitions(table,name,expression,alias_name,controls,as_of)+query
 
 
-def _write_landing_queries(folder, table, name, expression, alias, landing):
+def _write_landing_queries(folder, table, name, expression, alias, landing, controls=None, as_of=None):
     if not landing or not landing['workloads']:return
     target=folder/'landing-queries';target.mkdir()
     index=[]
@@ -89,28 +96,30 @@ def _write_landing_queries(folder, table, name, expression, alias, landing):
         marker='"Value_1", '+original
         if workload['query'].count(marker)!=1:raise ModelError('Unexpected landing query projection')
         files={}
-        queries={'validation':_validation_query(table,name,expression,alias,workload),
-                 'baseline':workload['query'],
-                 'candidate':f'DEFINE MEASURE {candidate} = {expression}\n'+workload['query'].replace(marker,'"Value_1", '+candidate)}
+        definitions=query_definitions(table,name,expression,alias,controls,as_of)
+        queries={'validation':_validation_query(table,name,expression,alias,workload,controls,as_of),
+                 'baseline':definitions+workload['query'] if controls else workload['query'],
+                 'candidate':definitions+workload['query'].replace(marker,'"Value_1", '+candidate)}
         for kind,query in queries.items():
             filename=workload['id']+'-'+kind+'.dax';files[kind]=filename
             (target/filename).write_text(query,encoding='utf-8')
         index.append({'scenario':workload['scenario'],'group_by':workload['group_by'],'filters':workload['filters'],'queries':files})
     (target/'contexts.json').write_text(json.dumps({'spec':landing['spec'],'cases':index,
         'validation_status':'not_run','performance_status':'unknown',
+        'as_of':(as_of or controls['dates'][0]) if controls else None,
         'scope':'Representative prefix contexts. Not an exact reproduction of the rendered visual.'},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     with zipfile.ZipFile(folder/'landing-queries.zip','w',zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(target.iterdir()):archive.write(path,path.name)
 
 
-def _write_visual_queries(folder, table, name, expression, alias, landings):
+def _write_visual_queries(folder, table, name, expression, alias, landings, controls=None, as_of=None):
     if not landings:return None
     contexts=folder/'visual-contexts';contexts.mkdir()
     index=[]
     for i,landing in enumerate(landings,1):
         target=contexts/str(i);target.mkdir()
         (target/'context.json').write_text(json.dumps(landing,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-        _write_landing_queries(target,table,name,expression,alias,landing)
+        _write_landing_queries(target,table,name,expression,alias,landing,controls,as_of)
         index.append({'matrix_id':landing['matrix_id'],'directory':str(i),'query_count':len(landing['workloads']),
                       'diagnostics':landing['diagnostics']})
     (contexts/'index.json').write_text(json.dumps({'visuals':index,'validation_status':'not_run',
@@ -119,8 +128,19 @@ def _write_visual_queries(folder, table, name, expression, alias, landings):
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
         for path in sorted(contexts.rglob('*')):
             if path.is_file() and path.suffix!='.zip':z.write(path,path.relative_to(contexts).as_posix())
-    if len(landings)==1:_write_landing_queries(folder,table,name,expression,alias,landings[0])
+    if len(landings)==1:_write_landing_queries(folder,table,name,expression,alias,landings[0],controls,as_of)
     return archive
+
+
+def _write_validation_files(folder,table,name,expression,alias,landings,controls=None):
+    (folder/'validate-total.dax').write_text(_validation_query(table,name,expression,alias,controls=controls),encoding='utf-8')
+    _write_visual_queries(folder,table,name,expression,alias,landings,controls)
+    if controls:
+        (folder/'date-controls.json').write_text(json.dumps(controls,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+        for as_of in controls['dates']:
+            dated=folder/'validation-dates'/as_of;dated.mkdir(parents=True)
+            (dated/'validate-total.dax').write_text(_validation_query(table,name,expression,alias,controls=controls,as_of=as_of),encoding='utf-8')
+            _write_visual_queries(dated,table,name,expression,alias,landings,controls,as_of)
 
 
 def _landing_context(model, owner, spec, analysis, progress):
@@ -142,7 +162,7 @@ def _landing_context(model, owner, spec, analysis, progress):
     return landing
 
 
-def review_measure(source, measure, *, table=None, analysis=None, progress=None, landing_matrix=None, landing_matrices=None):
+def review_measure(source, measure, *, table=None, analysis=None, progress=None, landing_matrix=None, landing_matrices=None, validation_dates=None):
     """Select exactly one root for proposals; include helpers only as lineage.
 
     Reusing an analysis requires its same unmodified model instance. No measure
@@ -182,11 +202,13 @@ def review_measure(source, measure, *, table=None, analysis=None, progress=None,
         'measure_id':owner.id,'measure':owner.qualified_name,'table':owner.table,'name':owner.name,
         'scope':'root-expression-only','expression':owner.expression,'original_dag':original,
         'diagnostics':diagnostics,'candidates':candidates,'validation_alias':alias,
+        'validation_dates':parse_validation_dates(validation_dates),
+        'date_controls':date_controls(model,owner,dates=validation_dates,graph=graph),
         'affected_downstream_measures':list(row['affected_downstream_measures']),
         'validation_status':'not_run','performance_status':'unknown','landing_visual':landing,'landing_visuals':landings})
 
 
-def write_measure_proposal(model, measure, expression, directory, *, graph=None, landing_visual=None, landing_visuals=None):
+def write_measure_proposal(model, measure, expression, directory, *, graph=None, landing_visual=None, landing_visuals=None, validation_dates=None):
     """Export a user-authored comparison, DAX and a scalar-total probe only."""
     owner=model.measure(measure)
     comparison=compare_measure_dags(model,owner.id,proposed_expression=expression,graph=graph)
@@ -197,11 +219,12 @@ def write_measure_proposal(model, measure, expression, directory, *, graph=None,
     alias='__sh_focus_custom'
     names={e.name.casefold() for e in model.entities.values()}
     while alias.casefold() in names:alias+='x'
-    valid=comparison['proposed']['dependency_complete']
+    controls=date_controls(model,owner,expression,dates=validation_dates,graph=graph)
+    valid=all(comparison[p]['dependency_complete'] for p in ['original','proposed']) and not (controls or {}).get('blocked_reasons')
     files['validation']=None
     if valid:
         files['validation']=root/'validate-total.dax'
-        files['validation'].write_text(_validation_query(owner.table,owner.name,expression,alias),encoding='utf-8')
-        _write_visual_queries(root,owner.table,owner.name,expression,alias,landings)
-    files['validation_reason']=None if valid else 'Validation queries withheld: '+' '.join(issue['message'] for issue in comparison['proposed'].get('dependency_issues',[]))
+        _write_validation_files(root,owner.table,owner.name,expression,alias,landings,controls)
+    reasons=[issue['message'] for p in ['original','proposed'] for issue in comparison[p].get('dependency_issues',[])]+(controls or {}).get('blocked_reasons',[])
+    files['validation_reason']=None if valid else 'Validation queries withheld: '+' '.join(dict.fromkeys(reasons))
     return files

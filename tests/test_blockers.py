@@ -22,7 +22,7 @@ class SpecificBlockerTests(unittest.TestCase):
         data=source('SUMX(Sales, Sales[Amount]) + [Clock]')
         data['model']['tables'][0]['measures'].append({'name':'Clock','expression':'\nTODAY()'})
         result=create_measure(data,'Total').data
-        self.assertEqual(result['outcome'],'unchanged_copy')
+        self.assertEqual(result['outcome'],'rewritten')
         self.assertIn("TODAY() in 'Sales'[Clock] at line 2",' '.join(result['diagnostics']))
         self.assertFalse(result['dependency_issues'])
         self.assertTrue(result['validation_available'])

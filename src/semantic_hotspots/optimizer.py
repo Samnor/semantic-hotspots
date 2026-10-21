@@ -24,7 +24,7 @@ RULES = {
     'OPT001': {'title': 'Replace a numeric physical-column SUMX with SUM',
                'preconditions': ['Physical base table and numeric physical column from that same table',
                                  'No iterator expression, measure callback, or calculated column',
-                                 'Recognized enclosing syntax and context; complete static dependency chain'],
+                                 'Bound rewritten operands and preserved surrounding helper callbacks/context'],
                'source_url': 'https://learn.microsoft.com/en-us/dax/sumx-function-dax'},
     'OPT002': {'title': 'Combine two nested row-local FILTER operations',
                'preconditions': ['Both filters preserve the same physical base-table rows and lineage',
@@ -32,7 +32,7 @@ RULES = {
                                  'Only comparisons and Boolean conjunction/disjunction; no measures, calls, arithmetic, or context transition'],
                'source_url': 'https://learn.microsoft.com/en-us/dax/filter-function-dax'},
     'OPT003': {'title': 'Remove a blank-only filter from a stored table SUMX',
-               'preconditions': ['The FILTER input is a lexically bound table variable',
+               'preconditions': ['The FILTER input is a lexically bound table variable, directly or through a filtered variable',
                                  'The predicate is exactly NOT ISBLANK of the column summed by SUMX',
                                  'Both references bind to the same physical or extension column; no measure reevaluation',
                                  'Only the SUMX input changes; the table binding and other consumers are retained'],
@@ -56,6 +56,7 @@ class LogicalNode:
     # Output schema only: extensions have expression identities, never fabricated
     # physical lineage. Row contexts carry these schemas separately from labels.
     table_columns: dict[str, dict] = field(default_factory=dict)
+    lexical_bindings: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self):
         result = asdict(self)
@@ -174,7 +175,8 @@ class _Parser:
                 if self.peek() and self.peek().kind == 'BRACKET':
                     raise ModelError('Table-variable qualified columns are outside the logical subset')
                 node = LogicalNode('variable_reference', 'unknown', token.start, token.end,
-                                   target=variable, value=token.value)
+                                   target=variable, value=token.value,
+                                   lexical_bindings={k:v for scope in self.scopes for k,v in scope.items()})
             elif self.peek() and self.peek().kind == 'BRACKET':
                 column = self.take()
                 target, _ = self.resolver.resolve(column.value, token.value, self.owner)
@@ -399,6 +401,11 @@ def _predicate(node, table, model):
 
 def _matches(tree, text, model):
     matches = []
+    definitions = {}
+    def collect(node):
+        if node.operation == 'variable_definition':definitions[node.target] = node.children[0]
+        for child in node.children:collect(child)
+    collect(tree)
     def visit(node):
         if node.operation == 'SUMX':
             table, column = map(_plain, node.children)
@@ -406,11 +413,16 @@ def _matches(tree, text, model):
                     and column.table == table.table and column.result_type in _NUMERIC
                     and _physical(table, model) and _physical(column, model)):
                 matches.append(('OPT001', node.start, node.end, f'SUM({text[column.start:column.end]})'))
-            if table.operation == 'FILTER':
-                base, predicate = map(_plain, table.children)
+            filtered = table
+            if table.operation == 'variable_reference' and table.target in definitions:
+                filtered = _plain(definitions[table.target])
+            if filtered.operation == 'FILTER':
+                base, predicate = map(_plain, filtered.children)
                 predicate = _plain(predicate.children[0]) if predicate.operation == 'NOT' and len(predicate.children) == 1 else None
                 tested = _plain(predicate.children[0]) if predicate and predicate.operation == 'ISBLANK' and len(predicate.children) == 1 else None
                 if (base.operation == 'variable_reference' and base.result_type == 'table'
+                        and (table.operation != 'variable_reference'
+                             or table.lexical_bindings.get(base.value.casefold()) == base.target)
                         and column.operation in {'column', 'extension_column'} and tested
                         and tested.operation == column.operation and tested.target == column.target):
                     matches.append(('OPT003', node.start, node.end,
@@ -429,6 +441,59 @@ def _matches(tree, text, model):
             visit(child)
     visit(tree)
     return matches
+
+
+def _type_gap_only(tree):
+    """Permit local rules around untyped metadata, never unknown syntax/calls.
+
+    Each rule still proves its own operands. This does not establish types or
+    semantics for the surrounding expression; engine validation stays separate.
+    """
+    nodes = []
+    def visit(node):
+        nodes.append(node)
+        for child in node.children:visit(child)
+    visit(tree)
+    definitions = {n.target:n.children[0] for n in nodes if n.operation == 'variable_definition'}
+    arities = {'TRUE':{0},'FALSE':{0},'BLANK':{0},'TODAY':{0},'DATE':{3},'YEAR':{1},
+               'ISBLANK':{1},'NOT':{1},'IF':{2,3},'DIVIDE':{2,3},'SUM':{1},'MAX':{1},
+               'MIN':{1},'VALUES':{1},'SUMX':{2},'FILTER':{2},'ISEMPTY':{1},'COUNTROWS':{1}}
+    structural = {'scan','column','measure','literal','variable_reference','variable_definition',
+                  'let','group','unary','binary','extension_column'}
+    def unknown(node, seen=frozenset()):
+        if node.operation == 'column' and node.result_type == 'unknown':return True
+        if node.operation == 'variable_reference' and node.target not in seen:
+            return unknown(definitions[node.target],seen|{node.target})
+        if node.operation == 'extension_column' and node.result_type == 'unknown':return True
+        return any(unknown(c,seen) for c in node.children)
+    for node in nodes:
+        op,c = node.operation,node.children
+        if op in arities:
+            if len(c) not in arities[op]:return False
+        elif op in {'ADDCOLUMNS','SELECTCOLUMNS'}:
+            if len(c)<3 or len(c)%2!=1:return False
+        elif op == 'SWITCH':
+            if len(c)<3:return False
+        elif op == 'CALCULATE':
+            if not c:return False
+        elif op != 'REMOVEFILTERS' and op not in structural:return False
+        if op == 'DIVIDE' and len(c)==3 and not (_plain(c[2]).operation=='literal' or _plain(c[2]).operation=='BLANK'):return False
+        if op in {'IF','NOT'} and c[0].result_type not in {'boolean','unknown'}:return False
+        if op == 'FILTER' and c[1].result_type not in {'boolean','unknown'}:return False
+        if not node.supported and node.operation != 'variable_reference' and not unknown(node):return False
+    return tree.operation != 'opaque'
+
+
+def _preserved_callbacks(before, after):
+    """A local rule must not move, duplicate or drop an opaque helper call."""
+    def references(tree):
+        result=[]
+        def visit(node):
+            if node.operation=='measure':result.append((node.target,node.row_context,node.filter_context))
+            for child in node.children:visit(child)
+        visit(tree)
+        return result
+    return references(before)==references(after)
 
 
 def _digest(text):
@@ -479,6 +544,10 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
         emit(progress, 'rewrites', 'Check rewrite proposals', completed=i-1, total=len(measures), unit='measures', detail=measure.qualified_name)
         before = measure.expression or ''
         tree, diagnostics = logical_plan(before, model, measure)
+        notes = []
+        if diagnostics and _type_gap_only(tree):
+            notes.append('Some surrounding column types are unknown. Only independently guarded local rewrites are proposed; no surrounding type or runtime semantics are inferred.')
+            diagnostics = []
         chain = [measure.id] + graph.dependency_ids(measure.id)
         if tree.result_type in {'table', 'unknown'} and not diagnostics:
             diagnostics.append('Measure scalar result type is not established in the logical subset.')
@@ -490,20 +559,32 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
                 if call.name in {'NOW','TODAY','RAND','RANDBETWEEN'}:
                     entity = model.entities[n]
                     line = entity.expression.count('\n',0,call.start)+1
-                    diagnostics.append('Controlled evaluation required for '+call.name+'() in '+entity.qualified_name+
-                                       ' at line '+str(line)+'. Automatic rewriting is withheld until date/time or random evaluation can be controlled.')
+                    if call.name=='TODAY' and not call.arguments and entity.kind=='measure':
+                        notes.append('TODAY() in '+entity.qualified_name+' at line '+str(line)+
+                                     ' is preserved. Validation uses explicit fixed dates through query-scoped measure definitions; the generated measure keeps live TODAY().')
+                    else:
+                        diagnostics.append('Controlled evaluation required for '+call.name+'() in '+entity.qualified_name+
+                                           ' at line '+str(line)+'. Automatic rewriting is withheld until date/time or random evaluation can be controlled.')
         if dynamic:
             diagnostics.append('Calculation groups or model functions are present; query-scoped rewrite validation is withheld.')
         issues = dependency_issues(model,graph.syntax,chain,cyclic=measure.id in graph.blocked)
-        diagnostics.extend(issue['message'] for issue in issues)
+        pending_helpers = [issue for issue in issues if issue['code']=='missing_definition' and issue['owner_id']!=measure.id]
+        diagnostics.extend(issue['message'] for issue in issues if issue not in pending_helpers)
+        if pending_helpers:
+            notes.extend(issue['message'] for issue in pending_helpers)
+            notes.append('Missing helpers remain opaque and unchanged. Independent local proposals are allowed, but validation queries require their actual definitions first.')
         candidates = []
         def candidate(after, steps, combined=False):
             if after == before or any(c['after'] == after for c in candidates):
                 return
             after_tree, issues = logical_plan(after, model, measure)
-            if issues:
+            if (issues and not _type_gap_only(after_tree)) or not _preserved_callbacks(tree,after_tree):
                 return
+            def today_calls(text):
+                return [(text[c.start:c.end],c.ancestors) for c in Resolver(model).scan(text,measure).calls if c.name=='TODAY']
+            if today_calls(before)!=today_calls(after):return
             from .comparison import compare_measure_dags
+            comparison = compare_measure_dags(model, measure.id, proposed_expression=after, graph=graph)
             candidates.append({'id': _digest(measure.id+'\x00'+before+'\x00'+after)[:20],
                                'measure_id': measure.id, 'measure': measure.qualified_name,
                                'before': before, 'after': after, 'before_sha256': _digest(before),
@@ -512,7 +593,12 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
                                'direct_dependencies_before': sorted(graph.dependencies[measure.id]),
                                'direct_dependencies_after': sorted({r.target for r in Resolver(model).scan(after, measure).references}), 'validation_status': 'not_run',
                                'performance_status': 'unknown', 'predicted_speedup': None,
-                               'dag_comparison': compare_measure_dags(model, measure.id, proposed_expression=after, graph=graph)})
+                               'validation_available': comparison['original']['dependency_complete'] and comparison['proposed']['dependency_complete'],
+                               'pending_helpers': [issue['owner_id'] for issue in pending_helpers],
+                               'guard_evidence': {'scope':'root-local structural proposal; not an equivalence proof',
+                                   'helper_callbacks_preserved':True,'today_calls_preserved':True,
+                                   'missing_helper_definitions_assumed':False},
+                               'dag_comparison': comparison})
         if not diagnostics:
             for rule, start, end, replacement in _matches(tree, before, model)[:32]:
                 candidate(before[:start]+replacement+before[end:], [{'rule': rule, 'source_span': [start, end],
@@ -520,7 +606,7 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
             current, steps = before, []
             for _ in range(16):
                 current_tree, issues = logical_plan(current, model, measure)
-                matches = _matches(current_tree, current, model) if not issues else []
+                matches = _matches(current_tree, current, model) if not issues or _type_gap_only(current_tree) else []
                 if not matches:
                     break
                 rule, start, end, replacement = matches[0]
@@ -531,7 +617,7 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
             if len(steps) == 16:
                 diagnostics.append('Combined search reached its 16-step bound; further rewrites may exist.')
         output.append({'measure_id': measure.id, 'measure': measure.qualified_name,
-                       'logical_before': tree.to_dict(), 'diagnostics': diagnostics,
+                       'logical_before': tree.to_dict(), 'diagnostics': diagnostics+notes,
                        'affected_downstream_measures': [m.id for m in model.measures if m.id != measure.id and graph.mask(m.id) & (1 << graph.index[measure.id])],
                        'candidates': candidates})
         emit(progress, 'rewrites', 'Check rewrite proposals', completed=i, total=len(measures), unit='measures', detail=measure.qualified_name)

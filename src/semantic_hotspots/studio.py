@@ -31,6 +31,7 @@ from .client_setup import install_adomd
 from .progress import emit
 from .focus import review_measure, write_measure_proposal
 from .creation import _create_from_review
+from .helpers import helper_requirements, recover_helpers, recover_helpers_from_desktop
 
 
 _ANALYSIS_STAGES = [('load', 'Read model'), ('dependencies', 'Trace dependencies'),
@@ -40,7 +41,8 @@ _ACTIONS = {'inspect': 'Analyze model', 'demo': 'Analyze synthetic demo', 'matri
             'generate': 'Build comparison', 'open': 'Open in Power BI Desktop',
             'discover': 'Find Desktop models', 'setup-client': 'Install official client',
             'run': 'Validate and benchmark', 'measure':'Review selected measure',
-            'measure-proposal':'Compare proposed measure','create-measure':'Create new measure'}
+            'measure-proposal':'Compare proposed measure','create-measure':'Create new measure',
+            'recover-helpers':'Recover actual helper definitions'}
 
 
 def _matrix_measure_ids(model, spec):
@@ -300,11 +302,15 @@ class Studio:
                 if self.model.measure(selected).id not in _matrix_measure_ids(self.model,spec):
                     raise ModelError('Choose matrices that directly display the selected measure, or continue without visual context')
                 landings.append(spec)
-            review=review_measure(self.model,selected,analysis=self.analysis,progress=self.report,landing_matrices=landings)
+            review=review_measure(self.model,selected,analysis=self.analysis,progress=self.report,landing_matrices=landings,validation_dates=data.get('validation_dates'))
             key,root=self.new_artifact()
             emit(self.report,'measure','Review selected measure',detail='Write this measure’s proposals and dependency chain')
             review.write(root/'measure')
             value={k:copy.deepcopy(review.data[k]) for k in ['measure_id','measure','expression','diagnostics','affected_downstream_measures']}
+            value['helper_requirements']=helper_requirements(self.model,selected)
+            value['date_controls']=copy.deepcopy(review.data.get('date_controls'))
+            value['validation_dates']=copy.deepcopy(review.data['validation_dates'])
+            value['recovery']=data.get('_recovery')
             base=f'/artifacts/{key}/measure/'
             value.update(url=base+'report.html',original_dag=base+'original.dag.json',chain=base+'original.txt',
                          original_dax=base+'original.dax',candidates=[],custom=None,landing_visual=None)
@@ -317,19 +323,49 @@ class Studio:
             for c in review.data['candidates']:
                 url=base+'candidates/'+c['id']+'/'
                 value['candidates'].append({'id':c['id'],'title':c['title'],'after':c['after'],
-                    'url':url+'report.html','dax':url+'proposed.dax','validation':url+'validate-total.dax',
-                    'landing_queries':url+'visual-context-queries.zip' if any(v['workloads'] for v in review.data['landing_visuals']) else None})
+                    'url':url+'report.html','dax':url+'proposed.dax','validation':url+'validate-total.dax' if (root/'measure/candidates'/c['id']/'validate-total.dax').is_file() else None,
+                    'landing_queries':url+'visual-context-queries.zip' if (root/'measure/candidates'/c['id']/'visual-context-queries.zip').is_file() else None})
             value['created']=None
             if action=='create-measure':
                 created=_create_from_review(self.model,review,progress=self.report)
                 created.write(root/'new-measure')
                 generated=f'/artifacts/{key}/new-measure/'
-                value['created']={k:copy.deepcopy(created.data[k]) for k in ['measure_id','name','table','definition','expression','outcome','explanation','diagnostics','validation_available']}
+                value['created']={k:copy.deepcopy(created.data[k]) for k in ['measure_id','name','table','definition','expression','outcome','explanation','diagnostics','validation_available','pending_helpers','date_controls']}
                 value['created'].update(url=generated+'report.html',dax=generated+'new-measure.dax',query=generated+'preview-query.dax',zip=generated+'new-measure.zip',
                     comparison=generated+'dags/report.html',validation=generated+'validate-total.dax' if created.data['validation_available'] else None,
                     contexts=generated+'visual-context-queries.zip' if (root/'new-measure/visual-context-queries.zip').is_file() else None)
             self.measure_review=review
             self.change(measure_review=value,project=None,result=None,sessions=[])
+        elif action == 'recover-helpers':
+            current=self.snapshot()['measure_review']
+            if not current or data.get('measure')!=current['measure_id']:
+                raise ModelError('Create a review of the selected measure before recovering its helpers')
+            if data.get('path') and (data.get('server') or data.get('database')):
+                raise ModelError('Choose one definition source: an export or one local Desktop model')
+            emit(self.report,'recover-helpers','Recover actual helper definitions',detail='Read matching definitions without changing the source model')
+            if data.get('path'):
+                recovered=recover_helpers(self.model,self.path(data['path']),current['measure_id'])
+            else:
+                server,database=data.get('server'),data.get('database')
+                if not any(s.get('server')==server and database in s.get('databases',[]) and not s.get('error') for s in self.snapshot()['sessions']):
+                    raise ModelError('Find local Desktop models and explicitly select the matching loaded model')
+                options={'dotnet_runtime':data.get('runtime','netfx')}
+                if data.get('adomd'):options['adomd_path']=Path(data['adomd']).expanduser().resolve()
+                recovered=recover_helpers_from_desktop(self.model,current['measure_id'],server=server,database=database,**options)
+            # Build the replacement analysis before changing state. Failures leave
+            # the current model/review usable; files and loaded engine are read-only.
+            previous_model,previous_analysis,previous_review=self.model,self.analysis,self.measure_review
+            previous_state=self.snapshot()
+            try:
+                self.model=recovered.model;self.inventory();self.analyze_current()
+                self.dispatch('create-measure',{'measure':current['measure_id'],
+                    'landing_matrices':[v['matrix_id'] for v in current['landing_visuals']],
+                    'validation_dates':current['validation_dates'],
+                    '_recovery':{'recovered_count':len(recovered.recovered),'remaining_count':len(recovered.remaining),'provenance':recovered.provenance}})
+            except Exception:
+                self.model,self.analysis,self.measure_review=previous_model,previous_analysis,previous_review
+                self.change(**{k:v for k,v in previous_state.items() if k not in {'busy','progress','error','operation'}})
+                raise
         elif action == 'measure-proposal':
             if self.analysis is None or self.measure_review is None:
                 raise ModelError('Review a selected measure first')
@@ -341,7 +377,8 @@ class Studio:
             key,root=self.new_artifact()
             emit(self.report,'measure-proposal','Compare proposed measure',detail='Trace this root expression and retain its full helper chain')
             result=write_measure_proposal(self.model,data['measure'],expression,root/'proposal',graph=self.analysis.graph,
-                                          landing_visuals=self.measure_review.data['landing_visuals'])
+                                          landing_visuals=self.measure_review.data['landing_visuals'],
+                                          validation_dates=self.measure_review.data['validation_dates'])
             value=self.snapshot()['measure_review']
             url=f'/artifacts/{key}/proposal/'
             value['custom']={'after':expression,'url':url+'report.html','dax':url+'proposed.dax',
