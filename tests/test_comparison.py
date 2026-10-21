@@ -79,6 +79,13 @@ class DagComparisonTests(unittest.TestCase):
         missing=computation_dag(data,'Absent');self.assertTrue(missing['missing_definitions'])
         self.assertFalse(missing['dependency_complete'])
 
+    def test_malformed_reference_syntax_is_not_a_complete_chain(self):
+        data=sample();data['model']['tables'][0]['measures'][0]['expression']='SUM(Orders[Amount]) /*'
+        g=computation_dag(data,'Leaf')
+        self.assertFalse(g['dependency_complete'])
+        self.assertTrue(g['reference_diagnostics'])
+        self.assertIn('Reference diagnostics:',dag_to_text(g))
+
     def test_syntax_only_calls_are_not_invented_or_claimed_typed(self):
         data=sample();data['model']['tables'][0]['measures'][0]['expression']='DIVIDE(SUM(Orders[Amount]), 2)'
         g=computation_dag(data,'Leaf');assert_graph(self,g)

@@ -146,15 +146,16 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
             refresh.add(n)
             pending.extend(e['to'] for e in outgoing[n])
     unresolved = {n: infos[n].unresolved for n in sorted(wanted) if n in infos and infos[n].unresolved}
+    reference_diagnostics = {n: infos[n].diagnostics for n in sorted(wanted) if n in infos and infos[n].diagnostics}
     missing = [n for n in sorted(wanted) if model.entities[n].kind == 'measure'
                and not overrides.get(n, model.entities[n].expression)]
     return {'schema_version': '1.0', 'kind': 'static-computation-dag', 'root': owner.id,
             'edge_meaning': 'consumer -> dependency; argument numbers describe syntax, not engine execution order',
             'is_acyclic': ordered is not None, 'evaluation_order': ordered,
-            'dependency_complete': ordered is not None and not unresolved and not missing,
+            'dependency_complete': ordered is not None and not unresolved and not missing and not reference_diagnostics,
             'operator_complete': not any(n.get('operation') == 'opaque' for n in nodes.values()),
             'logical_subset_validated': not diagnostics,
-            'unresolved': unresolved, 'missing_definitions': missing,
+            'unresolved': unresolved, 'reference_diagnostics': reference_diagnostics, 'missing_definitions': missing,
             'diagnostics': diagnostics, 'query_time_node_ids': sorted(query), 'refresh_time_node_ids': sorted(refresh),
             'materialization_node_ids': materializations,
             'nodes': [nodes[n] for n in sorted(nodes)],
@@ -284,7 +285,7 @@ def render_dag_comparison(comparison):
         if not g['operator_complete']:notes.append('Some DAX is opaque; its exact definition and resolved references are retained without invented operator topology.')
         elif g['diagnostics']:notes.append('Some parsed calls lack established type/context semantics. They are labelled “syntax only”; diagnostics are retained below.')
         issues=('<p class="dag-note">'+esc(' '.join(notes))+'</p>') if notes else ''
-        sides.append(f'<section class="dag-side"><h3>{title}</h3><p>{esc(root["label"])}</p><pre>{esc(root["expression"] or "Definition missing")}</pre>{issues}<h4>Query-time dependency view</h4><div class="dag-diagram">{_svg(g,g["query_time_node_ids"],highlights)}</div>{refresh}<details><summary>Every node, definition and edge · {len(g["nodes"])} nodes / {len(g["edges"])} edges</summary>{definitions}<ol class="dag-edges">{edge_list}</ol><pre>{esc(json.dumps({k:g[k] for k in ["unresolved","missing_definitions","diagnostics","evaluation_order"]},ensure_ascii=False,indent=2))}</pre></details></section>')
+        sides.append(f'<section class="dag-side"><h3>{title}</h3><p>{esc(root["label"])}</p><pre>{esc(root["expression"] or "Definition missing")}</pre>{issues}<h4>Query-time dependency view</h4><div class="dag-diagram">{_svg(g,g["query_time_node_ids"],highlights)}</div>{refresh}<details><summary>Every node, definition and edge · {len(g["nodes"])} nodes / {len(g["edges"])} edges</summary>{definitions}<ol class="dag-edges">{edge_list}</ol><pre>{esc(json.dumps({k:g[k] for k in ["unresolved","reference_diagnostics","missing_definitions","diagnostics","evaluation_order"]},ensure_ascii=False,indent=2))}</pre></details></section>')
     delta=comparison['difference']
     summary=comparison['summary']
     explanation=('<p>Upstream measure dependencies: '+str(summary['upstream_measures_original'])+' original → '+str(summary['upstream_measures_proposed'])+' proposed. Root DAX '+('changed.' if summary['root_expression_changed'] else 'is unchanged.')+' These are structural differences, not measured work or speedup.</p>')
@@ -308,6 +309,7 @@ def dag_to_text(graph):
             role = e['kind'] + (' argument '+str(e['argument']) if 'argument' in e else '')
             lines.append('  -> '+e['to']+' ('+role+')')
     lines += ['', 'Unresolved: '+json.dumps(graph['unresolved'],ensure_ascii=False),
+              'Reference diagnostics: '+json.dumps(graph['reference_diagnostics'],ensure_ascii=False),
               'Missing definitions: '+json.dumps(graph['missing_definitions'],ensure_ascii=False),
               'Diagnostics: '+json.dumps(graph['diagnostics'],ensure_ascii=False)]
     return '\n'.join(lines)+'\n'
