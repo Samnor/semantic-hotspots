@@ -16,7 +16,8 @@ __all__ = ['Analysis', 'CycleError', 'DependencyGraph', 'Entity', 'Model', 'Mode
            'MatrixSpec', 'MatrixAnalysis', 'load_matrices', 'analyze_matrices',
            'ProjectExport', 'export_project', 'discover_desktop_ports', 'desktop_sessions', 'query_to_csv',
            'ShowcaseResults', 'run_showcase', 'read_performance_analyzer', 'install_adomd',
-           'computation_dag', 'compare_measure_dags', 'write_dag_comparison', 'dag_to_text']
+           'computation_dag', 'compare_measure_dags', 'write_dag_comparison', 'dag_to_text',
+           'MeasureReview', 'review_measure']
 
 from .optimizer import LogicalNode, RewritePlan, plan_rewrites
 from .experiments import RewriteResults, prepare_rewrite_experiment, collect_rewrite_results, run_rewrite_experiment
@@ -29,3 +30,4 @@ from .performance import read_performance_analyzer
 from .client_setup import install_adomd
 
 from .comparison import computation_dag, compare_measure_dags, write_dag_comparison, dag_to_text
+from .focus import MeasureReview, review_measure

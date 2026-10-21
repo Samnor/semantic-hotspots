@@ -29,6 +29,7 @@ from .showcase import run_showcase, _rows, _tokens
 from .performance import read_performance_analyzer
 from .client_setup import install_adomd
 from .progress import emit
+from .focus import review_measure, write_measure_proposal
 
 
 _ANALYSIS_STAGES = [('load', 'Read model'), ('dependencies', 'Trace dependencies'),
@@ -37,7 +38,8 @@ _ANALYSIS_STAGES = [('load', 'Read model'), ('dependencies', 'Trace dependencies
 _ACTIONS = {'inspect': 'Analyze model', 'demo': 'Analyze synthetic demo', 'matrix': 'Review matrix',
             'generate': 'Build comparison', 'open': 'Open in Power BI Desktop',
             'discover': 'Find Desktop models', 'setup-client': 'Install official client',
-            'run': 'Validate and benchmark'}
+            'run': 'Validate and benchmark', 'measure':'Review selected measure',
+            'measure-proposal':'Compare proposed measure'}
 
 
 class Studio:
@@ -53,9 +55,11 @@ class Studio:
                       'model': None, 'matrices': [], 'measures': [], 'sessions': [], 'project': None,
                       'result': None, 'windows': sys.platform == 'win32',
                       'pythonnet': importlib.util.find_spec('pythonnet') is not None,
-                      'workspace': str(self.workspace), 'operation': None}
+                      'workspace': str(self.workspace), 'operation': None, 'measure_review':None}
         self._started = self._stage_started = self._updated = self._finished = None
         self.model = None
+        self.analysis = None
+        self.measure_review = None
         self.specs = []
         self.config = {}
         self.performance = None
@@ -144,6 +148,7 @@ class Studio:
         return path
 
     def analyze_current(self):
+        self.analysis = None
         analysis = analyze(self.model, progress=self.report)
         key, root = self.new_artifact()
         measures = copy.deepcopy(analysis.ranked)
@@ -179,6 +184,8 @@ class Studio:
             matrix_analysis.write(root / 'matrices')
         if self.performance:
             (root/'performance.json').write_text(json.dumps(self.performance, ensure_ascii=False, indent=2), encoding='utf-8')
+        self.analysis=analysis
+        self.measure_review=None
         self.change(model={'name':self.model.name, 'source_format':self.model.source_format,
                            'measure_count':len(self.model.measures), 'table_count':len(self.model.tables),
                            'tables':[{'name':t.name,'storage_modes':sorted(t.storage_modes) or ['unknown']}
@@ -188,7 +195,7 @@ class Studio:
                     measure_choices=[[e.table, e.name] for e in self.model.measures],
                     analysis_url=f'/artifacts/{key}/report.html',
                     matrix_url=f'/artifacts/{key}/matrices/report.html' if self.specs else None,
-                    project=None, result=None)
+                    project=None, result=None, measure_review=None)
 
     def dispatch(self, action, data):
         if action == 'inspect':
@@ -247,6 +254,42 @@ class Studio:
             self.specs = [s for s in self.specs if s.id != spec.id] + [spec]
             self.inventory()
             self.analyze_current()
+        elif action == 'measure':
+            if self.analysis is None:
+                raise ModelError('Analyze a model successfully before choosing a measure')
+            selected=data.get('measure')
+            if not isinstance(selected,str) or not selected:
+                raise ModelError('Choose a measure from the loaded model')
+            review=review_measure(self.model,selected,analysis=self.analysis,progress=self.report)
+            key,root=self.new_artifact()
+            emit(self.report,'measure','Review selected measure',detail='Write this measure’s proposals and dependency chain')
+            review.write(root/'measure')
+            value={k:copy.deepcopy(review.data[k]) for k in ['measure_id','measure','expression','diagnostics','affected_downstream_measures']}
+            base=f'/artifacts/{key}/measure/'
+            value.update(url=base+'report.html',original_dag=base+'original.dag.json',chain=base+'original.txt',
+                         original_dax=base+'original.dax',candidates=[],custom=None)
+            for c in review.data['candidates']:
+                url=base+'candidates/'+c['id']+'/'
+                value['candidates'].append({'id':c['id'],'title':c['title'],'after':c['after'],
+                    'url':url+'report.html','dax':url+'proposed.dax','validation':url+'validate-total.dax'})
+            self.measure_review=review
+            self.change(measure_review=value)
+        elif action == 'measure-proposal':
+            if self.analysis is None or self.measure_review is None:
+                raise ModelError('Review a selected measure first')
+            if data.get('measure') != self.measure_review.data['measure_id']:
+                raise ModelError('The selected measure changed; review it before comparing a proposal')
+            expression=data.get('expression')
+            if not isinstance(expression,str) or not expression.strip():
+                raise ModelError('Enter the proposed measure expression')
+            key,root=self.new_artifact()
+            emit(self.report,'measure-proposal','Compare proposed measure',detail='Trace this root expression and retain its full helper chain')
+            write_measure_proposal(self.model,data['measure'],expression,root/'proposal',graph=self.analysis.graph)
+            value=self.snapshot()['measure_review']
+            url=f'/artifacts/{key}/proposal/'
+            value['custom']={'after':expression,'url':url+'report.html','dax':url+'proposed.dax',
+                             'validation':url+'validate-total.dax'}
+            self.change(measure_review=value)
         elif action == 'generate':
             if self.model is None:
                 raise ModelError('Open a model first')

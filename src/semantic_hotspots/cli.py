@@ -69,6 +69,11 @@ def main(argv: list[str] | None = None) -> int:
     compare.add_argument('--candidate-measure')
     compare.add_argument('--candidate-table')
     compare.add_argument('-o', '--output', type=Path, default=Path('dag-comparison'))
+    focus = commands.add_parser('optimize-measure', help='Review proposals for exactly one root measure; no matrix or model edits')
+    focus.add_argument('model', type=Path)
+    focus.add_argument('measure')
+    focus.add_argument('--table')
+    focus.add_argument('-o', '--output', type=Path, default=Path('measure-review'))
     mock = commands.add_parser('simulate', help='Generate seeded mock CSVs, an isolated Import BIM, workloads and HTML; does not execute DAX')
     mock.add_argument('model', type=Path)
     mock.add_argument('-o', '--output', type=Path, default=Path('synthetic-lab'))
@@ -249,6 +254,12 @@ def main(argv: list[str] | None = None) -> int:
             incomplete = any(not case['rows'] for case in result.cases) or any('expected ' in d or 'failed or timed out' in d for d in result.diagnostics)
             return 1 if failed or incomplete else 0
         model = load_model(args.model)
+        if args.command == 'optimize-measure':
+            from .focus import review_measure
+            review=review_measure(model,args.measure,table=args.table)
+            files=review.write(args.output)
+            print(f'Selected measure: {review.data["measure"]}\nRoot-only proposals: {len(review.data["candidates"])}\nHTML: {files["html"].resolve()}\nSource model unchanged. Correctness not tested; performance unknown.')
+            return 0
         if args.command == 'compare-dags':
             from .comparison import compare_measure_dags, write_dag_comparison
             result = compare_measure_dags(model, args.measure, table=args.table,
