@@ -240,7 +240,8 @@ def _svg(graph, wanted=None, highlights=None):
     positions = {n: ((content_width-len(row)*270)/2+i*270+10, level*100+8)
                  for level,row in layers.items() for i,n in enumerate(sorted(row))}
     esc = lambda x: html.escape(str(x), quote=True)
-    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" role="img" aria-label="Consumer to dependency DAG"><title>Static computation DAG; arrows point to dependencies</title>']
+    fit = f' style="display:block;max-width:100%;height:auto;min-width:{min(width,540)}px"' if width <= 842 else ''
+    svg = [f'<svg{fit} xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" role="img" aria-label="Consumer to dependency DAG"><title>Static computation DAG; arrows point to dependencies</title>']
     long_edges = 0
     for e in edges:
         x,y=positions[e['from']];a,b=positions[e['to']]
