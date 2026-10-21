@@ -73,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
     focus.add_argument('model', type=Path)
     focus.add_argument('measure')
     focus.add_argument('--table')
+    focus.add_argument('--matrices', type=Path, help='Optional matrix specifications or PBIR report folder')
+    focus.add_argument('--landing-matrix', help='Explicit optional landing matrix ID; requires --matrices')
     focus.add_argument('-o', '--output', type=Path, default=Path('measure-review'))
     mock = commands.add_parser('simulate', help='Generate seeded mock CSVs, an isolated Import BIM, workloads and HTML; does not execute DAX')
     mock.add_argument('model', type=Path)
@@ -135,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
     project.add_argument('model', type=Path)
     project.add_argument('--matrices', type=Path, required=True)
     project.add_argument('--matrix', help='Choose a specific matrix ID; default is the highest-priority eligible matrix')
+    project.add_argument('--measure', help='Target one measure, using the chosen matrix as its landing visual')
+    project.add_argument('--table', help='Qualify the selected measure')
     project.add_argument('--config', type=Path, help='Synthetic data settings for tables in the selected context')
     project.add_argument('--fact-rows', type=_positive)
     project.add_argument('--dimension-rows', type=_positive)
@@ -195,7 +199,8 @@ def main(argv: list[str] | None = None) -> int:
             settings=SimulationConfig.from_dict(settings).__dict__.copy()
             for option in ['fact_rows','dimension_rows']:
                 if getattr(args,option) is not None:settings[option]=getattr(args,option)
-            result=export_project(args.model,args.matrices,args.output,matrix_id=args.matrix,config=settings)
+            result=export_project(args.model,args.matrices,args.output,matrix_id=args.matrix,config=settings,
+                                  measure=args.measure,table=args.table)
             print(f'Power BI project: {result.project_path}\nOne page, one comparison matrix. Embedded synthetic data; refresh in Desktop.')
             print('Summary candidate exported. Desktop/engine validation not run; performance is unknown.')
             return 0
@@ -256,7 +261,13 @@ def main(argv: list[str] | None = None) -> int:
         model = load_model(args.model)
         if args.command == 'optimize-measure':
             from .focus import review_measure
-            review=review_measure(model,args.measure,table=args.table)
+            if bool(args.matrices)!=bool(args.landing_matrix):
+                raise ModelError('Supply both --matrices and --landing-matrix to choose an optional landing visual')
+            landing=None
+            if args.matrices:
+                landing=next((s for s in load_matrices(args.matrices) if s.id==args.landing_matrix),None)
+                if landing is None:raise ModelError('Requested landing matrix was not found')
+            review=review_measure(model,args.measure,table=args.table,landing_matrix=landing)
             files=review.write(args.output)
             print(f'Selected measure: {review.data["measure"]}\nRoot-only proposals: {len(review.data["candidates"])}\nHTML: {files["html"].resolve()}\nSource model unchanged. Correctness not tested; performance unknown.')
             return 0

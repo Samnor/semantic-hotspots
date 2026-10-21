@@ -280,7 +280,7 @@ class ProjectExport:
     def model_path(self):return self.directory/'Showcase.SemanticModel/model.bim'
 
 
-def export_project(source,matrices,directory,*,matrix_id=None,config=None):
+def export_project(source,matrices,directory,*,matrix_id=None,config=None,measure=None,table=None):
     """Export exactly one comparison matrix and a new mock-data Import model.
 
     Only a complete, unfiltered, default-drill contract with one supported fact
@@ -289,6 +289,20 @@ def export_project(source,matrices,directory,*,matrix_id=None,config=None):
     aggregation mappings or production deployment are created.
     """
     model=source if isinstance(source,Model) else parse_model(source) if isinstance(source,dict) else load_model(source)
+    selected=None;landing=None
+    if table is not None and measure is None:
+        raise ModelError('A table qualifier requires a selected measure')
+    if measure is not None:
+        from .matrices import load_matrices, measure_landing_spec
+        selected=model.measure(measure,table)
+        specs=load_matrices(matrices)
+        if matrix_id is None and len(specs)!=1:
+            raise ModelError('Choose one optional landing matrix explicitly for the selected measure')
+        original=next((s for s in specs if matrix_id is None or s.id==matrix_id),None)
+        if original is None:raise ModelError('Requested landing matrix was not found')
+        landing={'matrix_id':original.id,'title':original.title,'original_values':copy.deepcopy(original.values)}
+        matrices=[measure_landing_spec(model,selected.id,original)]
+        matrix_id=original.id
     analysis,row,candidate,rejected=_selection(model,matrices,matrix_id)
     for key in ['rows','columns','retain']:
         row['spec'][key]=[[_column(model,p).table,_column(model,p).name] for p in row['spec'][key]]
@@ -311,6 +325,9 @@ def export_project(source,matrices,directory,*,matrix_id=None,config=None):
     if settings.matrices or settings.workloads:
         raise ModelError('Pass the matrix contract separately; showcase config does not accept extra matrices/workloads')
     settings.matrices=[];settings.workloads=[];settings.data_root=r'C:\showcase\simulation\tables'
+    if selected is not None:
+        if set(settings.tables)-set(model.tables):raise ModelError('Showcase config contains unknown tables')
+        settings.tables={k:v for k,v in settings.tables.items() if k in needed}
     if set(settings.tables)-needed:raise ModelError('Showcase config contains tables outside the selected matrix chain/context')
     destination=Path(directory).resolve()
     if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
@@ -338,6 +355,7 @@ def export_project(source,matrices,directory,*,matrix_id=None,config=None):
         _report(root,row['spec'],changes)
         cases=_queries(root,analysis,row,changes,table['name'],candidate['fact_table'])
         manifest={'schema_version':'1.0','kind':'power-bi-showcase-project','matrix_id':row['id'],
+                  'selected_measure_id':selected.id if selected else None,'landing_visual':landing,
                   'visual_count':1,'page_count':1,'strategy':'refresh_time_relationship_key_summary',
                   'spec':row['spec'],'summary_table':table['name'],'source_fact':candidate['fact_table'],
                   'grain':candidate['relationship_preserving_grain'],'component_bindings':bindings,

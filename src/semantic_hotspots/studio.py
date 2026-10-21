@@ -55,7 +55,7 @@ class Studio:
                       'model': None, 'matrices': [], 'measures': [], 'sessions': [], 'project': None,
                       'result': None, 'windows': sys.platform == 'win32',
                       'pythonnet': importlib.util.find_spec('pythonnet') is not None,
-                      'workspace': str(self.workspace), 'operation': None, 'measure_review':None}
+                      'workspace': str(self.workspace), 'operation': None, 'measure_review':None,'matrix_warning':None}
         self._started = self._stage_started = self._updated = self._finished = None
         self.model = None
         self.analysis = None
@@ -96,7 +96,7 @@ class Studio:
                 operation['stages'].append({'id': event['stage'], 'label': event['label'], 'status': 'pending'})
             for stage in operation['stages']:
                 if stage['id'] == event['stage']:
-                    stage['status'] = 'running'
+                    stage.update(status='running',label=event['label'])
             operation.update(event)
             self._updated = now
 
@@ -149,7 +149,7 @@ class Studio:
 
     def analyze_current(self):
         self.analysis = None
-        analysis = analyze(self.model, progress=self.report)
+        analysis = analyze(self.model, progress=self.report,include_rewrites=False)
         key, root = self.new_artifact()
         measures = copy.deepcopy(analysis.ranked)
         queries = self.performance['queries'] if self.performance else []
@@ -203,19 +203,23 @@ class Studio:
             path = self.path(data['model'])
             model = load_model(path)
             emit(self.report, 'load', 'Read model', detail=f'Model loaded: {len(model.tables)} tables, {len(model.measures)} measures. Read matrix contexts.')
-            if data.get('matrices'):
-                specs = load_matrices(self.path(data['matrices']))
-            else:
-                search = path.parent if path.is_file() or path.name.casefold().endswith('.semanticmodel') else path
-                reports = list(search.glob('*.Report'))
-                if len(reports) > 1:
-                    raise ModelError('Several reports found; choose a matrix specification or one .Report folder')
-                specs = load_matrices(reports[0]) if reports else []
+            matrix_warning=None
+            try:
+                if data.get('matrices'):
+                    specs = load_matrices(self.path(data['matrices']))
+                else:
+                    search = path.parent if path.is_file() or path.name.casefold().endswith('.semanticmodel') else path
+                    reports = list(search.glob('*.Report'))
+                    if len(reports) > 1:
+                        raise ModelError('Several reports found; choose one report folder for optional landing visuals')
+                    specs = load_matrices(reports[0]) if reports else []
+            except (OSError,ValueError,ModelError) as exc:
+                specs=[];matrix_warning='Optional landing matrices were not loaded: '+str(exc)+'. Measure analysis remains available.'
             if data.get('performance'):
                 emit(self.report, 'load', 'Read model', detail='Match recorded Performance Analyzer query contexts')
             recording = read_performance_analyzer(model, self.path(data['performance'])) if data.get('performance') else None
             self.model, self.specs, self.config, self.performance = model, specs, {}, recording
-            self.change(loaded_path=str(path))
+            self.change(loaded_path=str(path),matrix_warning=matrix_warning)
             self.inventory()
             self.analyze_current()
         elif action == 'demo':
@@ -228,7 +232,7 @@ class Studio:
             self.specs = load_matrices(root / 'demo-matrices.json')
             self.config = json.loads((root / 'demo-config.json').read_text())
             self.performance = None
-            self.change(loaded_path='Built-in fictional demo')
+            self.change(loaded_path='Built-in fictional demo',matrix_warning=None)
             self.inventory()
             self.analyze_current()
         elif action == 'matrix':
@@ -244,8 +248,9 @@ class Studio:
                 # Keep every unsupported flag/filter/retained dimension intact.
                 raw['context_complete'] = True
             else:
+                selected=self.model.measure(data['measure']) if data.get('measure') else None
                 raw = {'id': 'custom-matrix', 'title': 'Selected matrix', 'rows': data.get('rows', []),
-                       'columns': data.get('columns', []), 'values': data.get('values', []), 'context_complete': True}
+                       'columns': data.get('columns', []), 'values': [[selected.table,selected.name]] if selected else data.get('values', []), 'context_complete': True}
                 columns = {(e.table, e.name) for e in self.model.entities.values() if e.kind == 'column'}
                 measures = {(e.table, e.name) for e in self.model.measures}
                 if any(tuple(p) not in columns for p in raw['rows'] + raw['columns']) or any(tuple(p) not in measures for p in raw['values']):
@@ -254,26 +259,38 @@ class Studio:
             self.specs = [s for s in self.specs if s.id != spec.id] + [spec]
             self.inventory()
             self.analyze_current()
+            if data.get('measure'):
+                self.dispatch('measure',{'measure':data['measure'],'landing_matrix':spec.id})
         elif action == 'measure':
             if self.analysis is None:
                 raise ModelError('Analyze a model successfully before choosing a measure')
             selected=data.get('measure')
             if not isinstance(selected,str) or not selected:
                 raise ModelError('Choose a measure from the loaded model')
-            review=review_measure(self.model,selected,analysis=self.analysis,progress=self.report)
+            landing_id=data.get('landing_matrix')
+            landing=None
+            if landing_id:
+                landing=next((s for s in self.specs if s.id==landing_id),None)
+                if landing is None:raise ModelError('Choose an existing optional landing matrix')
+            review=review_measure(self.model,selected,analysis=self.analysis,progress=self.report,landing_matrix=landing)
             key,root=self.new_artifact()
             emit(self.report,'measure','Review selected measure',detail='Write this measure’s proposals and dependency chain')
             review.write(root/'measure')
             value={k:copy.deepcopy(review.data[k]) for k in ['measure_id','measure','expression','diagnostics','affected_downstream_measures']}
             base=f'/artifacts/{key}/measure/'
             value.update(url=base+'report.html',original_dag=base+'original.dag.json',chain=base+'original.txt',
-                         original_dax=base+'original.dax',candidates=[],custom=None)
+                         original_dax=base+'original.dax',candidates=[],custom=None,landing_visual=None)
+            if review.data['landing_visual']:
+                context=review.data['landing_visual']
+                value['landing_visual']={k:copy.deepcopy(context[k]) for k in ['matrix_id','title','original_values','spec','diagnostics','grain_advice','summary_export']}
+                value['landing_visual'].update(context_url=base+'landing-visual.json',workload_count=len(context['workloads']))
             for c in review.data['candidates']:
                 url=base+'candidates/'+c['id']+'/'
                 value['candidates'].append({'id':c['id'],'title':c['title'],'after':c['after'],
-                    'url':url+'report.html','dax':url+'proposed.dax','validation':url+'validate-total.dax'})
+                    'url':url+'report.html','dax':url+'proposed.dax','validation':url+'validate-total.dax',
+                    'landing_queries':url+'landing-queries.zip' if review.data['landing_visual'] and review.data['landing_visual']['workloads'] else None})
             self.measure_review=review
-            self.change(measure_review=value)
+            self.change(measure_review=value,project=None,result=None,sessions=[])
         elif action == 'measure-proposal':
             if self.analysis is None or self.measure_review is None:
                 raise ModelError('Review a selected measure first')
@@ -284,15 +301,22 @@ class Studio:
                 raise ModelError('Enter the proposed measure expression')
             key,root=self.new_artifact()
             emit(self.report,'measure-proposal','Compare proposed measure',detail='Trace this root expression and retain its full helper chain')
-            write_measure_proposal(self.model,data['measure'],expression,root/'proposal',graph=self.analysis.graph)
+            result=write_measure_proposal(self.model,data['measure'],expression,root/'proposal',graph=self.analysis.graph,
+                                          landing_visual=self.measure_review.data['landing_visual'])
             value=self.snapshot()['measure_review']
             url=f'/artifacts/{key}/proposal/'
             value['custom']={'after':expression,'url':url+'report.html','dax':url+'proposed.dax',
-                             'validation':url+'validate-total.dax'}
+                             'validation':url+'validate-total.dax' if result['validation'] else None,
+                             'validation_reason':result['validation_reason'],
+                             'landing_queries':url+'landing-queries.zip' if (root/'proposal/landing-queries.zip').is_file() else None}
             self.change(measure_review=value)
         elif action == 'generate':
             if self.model is None:
                 raise ModelError('Open a model first')
+            selected=data.get('measure')
+            focus=self.snapshot()['measure_review']
+            if not selected or not focus or focus['measure_id']!=selected or not focus['landing_visual'] or focus['landing_visual']['matrix_id']!=data.get('matrix'):
+                raise ModelError('Review one measure with an optional landing visual before building its comparison')
             settings = copy.deepcopy(self.config)
             for name, default, maximum in [('fact_rows', 5000, 1000000), ('dimension_rows', 12, 10000)]:
                 value = data.get(name, default)
@@ -301,7 +325,7 @@ class Studio:
                 settings[name] = value
             key, root = self.new_artifact()
             emit(self.report, 'generate', 'Build comparison', detail='Generate mock data, the summary candidate and paired DAGs')
-            project = export_project(self.model, self.specs, root / 'project', matrix_id=data['matrix'], config=settings)
+            project = export_project(self.model, self.specs, root / 'project', matrix_id=data['matrix'], config=settings,measure=selected)
             emit(self.report, 'archive', 'Package comparison', detail='Create the downloadable project ZIP')
             with zipfile.ZipFile(root / 'showcase.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
                 for path in project.directory.rglob('*'):

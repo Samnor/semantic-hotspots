@@ -62,7 +62,9 @@ class StudioTests(unittest.TestCase):
         blocked=[m for m in state['matrices'] if not m['eligible']]
         self.assertTrue(eligible);self.assertTrue(blocked)
         with self.assertRaises(ModelError):studio.dispatch('generate',{'matrix':blocked[0]['id']})
-        studio.dispatch('generate',{'matrix':eligible[0]['id'],'fact_rows':50,'dimension_rows':4})
+        owner=studio.model.measure('Revenue').id
+        studio.dispatch('measure',{'measure':owner,'landing_matrix':eligible[0]['id']})
+        studio.dispatch('generate',{'measure':owner,'matrix':eligible[0]['id'],'fact_rows':50,'dimension_rows':4})
         project=studio.snapshot()['project']
         self.assertTrue(Path(project['directory'],'Showcase.pbip').is_file())
         self.assertEqual(project['manifest']['engine_validation'],'not_run')
@@ -96,7 +98,9 @@ class StudioTests(unittest.TestCase):
 
     def test_discovery_hints_match_all_measure_definitions_without_auto_selection(self):
         studio=self.server.studio;studio.dispatch('demo',{})
-        studio.dispatch('generate',{'matrix':'monthly-margin','fact_rows':30})
+        owner=studio.model.measure('Revenue').id
+        studio.dispatch('measure',{'measure':owner,'landing_matrix':'monthly-margin'})
+        studio.dispatch('generate',{'measure':owner,'matrix':'monthly-margin','fact_rows':30})
         project=studio.snapshot()['project']
         bim=json.loads(Path(project['directory'],'Showcase.SemanticModel/model.bim').read_text())
         def query(file,output,**kwargs):
@@ -177,8 +181,12 @@ class StudioTests(unittest.TestCase):
         studio.specs=[]
         original=[m.expression for m in studio.model.measures]
         owner=studio.model.measure('Revenue iterator','Sales')
-        with patch('semantic_hotspots.focus.plan_rewrites',side_effect=AssertionError('Unexpected replan')):
+        from semantic_hotspots.optimizer import plan_rewrites
+        self.assertIsNone(studio.analysis.rewrite_plan)
+        with patch('semantic_hotspots.focus.plan_rewrites',wraps=plan_rewrites) as plan:
             studio.dispatch('measure',{'measure':owner.id})
+        self.assertEqual(plan.call_count,1)
+        self.assertEqual(plan.call_args.kwargs['measure'],owner.id)
         result=studio.snapshot()['measure_review']
         self.assertEqual(result['measure_id'],owner.id);self.assertEqual(len(result['candidates']),1)
         self.assertEqual(result['candidates'][0]['after'],'SUM(Sales[Amount])')
@@ -193,6 +201,32 @@ class StudioTests(unittest.TestCase):
         self.assertIsNone(studio.snapshot()['measure_review']['custom'])
         self.assertEqual([m.expression for m in studio.model.measures],original)
         studio.dispatch('demo',{});self.assertIsNone(studio.snapshot()['measure_review'])
+
+    def test_optional_landing_selection_is_root_scoped_and_clearing_removes_project(self):
+        studio=self.server.studio;studio.dispatch('demo',{})
+        owner=studio.model.measure('Revenue iterator').id
+        studio.dispatch('measure',{'measure':owner})
+        self.assertIsNone(studio.snapshot()['measure_review']['landing_visual'])
+        with self.assertRaises(ModelError):studio.dispatch('generate',{'matrix':'monthly-margin'})
+        studio.dispatch('measure',{'measure':owner,'landing_matrix':'monthly-margin'})
+        review=studio.snapshot()['measure_review']
+        self.assertEqual(review['landing_visual']['spec']['values'],[['Sales','Revenue iterator']])
+        self.assertTrue(review['candidates'][0]['landing_queries'])
+        studio.dispatch('generate',{'measure':owner,'matrix':'monthly-margin','fact_rows':20})
+        self.assertEqual(len(studio.snapshot()['project']['manifest']['changes']),1)
+        studio.dispatch('measure',{'measure':owner,'landing_matrix':None})
+        self.assertIsNone(studio.snapshot()['project']);self.assertIsNone(studio.snapshot()['result'])
+        self.assertIsNone(studio.snapshot()['measure_review']['landing_visual'])
+        self.assertIsNone(studio.snapshot()['measure_review']['candidates'][0]['landing_queries'])
+
+    def test_optional_matrix_import_failure_leaves_measure_analysis_available(self):
+        from test_landing import source
+        (self.root/'model.bim').write_text(json.dumps(source()),encoding='utf-8')
+        (self.root/'bad.json').write_text('{',encoding='utf-8')
+        studio=self.server.studio;studio.dispatch('inspect',{'model':'model.bim','matrices':'bad.json'})
+        self.assertTrue(studio.snapshot()['matrix_warning']);self.assertFalse(studio.specs)
+        studio.dispatch('measure',{'measure':studio.model.measure('Iterator').id})
+        self.assertTrue(studio.snapshot()['measure_review']['candidates'])
 
 
 if __name__=='__main__':unittest.main()
