@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.17.0/semantic_hotspots-0.17.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.18.0/semantic_hotspots-0.18.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.17.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.18.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -359,7 +359,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.17.0/semantic_hotspots-0.17.0-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.18.0/semantic_hotspots-0.18.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -438,6 +438,8 @@ The rule registry is deliberately small:
 | OPT003 | `SUMX(FILTER(t, NOT ISBLANK([@score])), [@score])` → `SUMX(t, [@score])` | `t` is a bound table variable; both column references bind to the same exact numeric stored column; floating-point and unestablished scalar types retain the filter |
 | OPT004 | `SUMX(VALUES(Fact[Day]), [Pure sum])` → `SUM(Fact[Units])` | Context transition, pure exact numeric sum and grain from the same physical table; no outer row context, bidirectional or many-to-many relationships |
 | OPT005 | Specialize improved helper paths into one new root | Complete supported changed paths; explicit CALCULATE per transplanted measure call; qualified model bindings; original helpers unchanged; bounded expansion |
+| OPT006 | Guarded numeric division → DIVIDE | Exact numeric operands and matching denominator; explicit BLANK alternate; floating-point operands retained |
+| OPT007 | Repeated denominator → local VAR | Same guard, exact numeric operands, fresh local name, original IF and division operator retained |
 
 Recognized logical operations include scans, scoped physical/extension columns, measure references, lexical scalar/table variables, literals, parentheses, scalar binary operators, `SUM`, `SUMX`, `FILTER`, `VALUES`, `ADDCOLUMNS`, paired-name `SELECTCOLUMNS`, `COUNTROWS`, `ISEMPTY`, `MAX`/`MIN`, `YEAR`/`DATE`, `SWITCH`, `IF`, Boolean/blank tests, `DIVIDE`, and `CALCULATE`/`REMOVEFILTERS`. Temporary-column DAG references link to explicit definition nodes. Existing rewrites can run inside supported extension expressions without moving their row/filter context. This is **not a full DAX AST/compiler or executable physical planner**. Unknown table schemas, unsupported calls, ambiguous references, cycles, calculation groups, model functions and dynamic root formats retain their guards. Independently guarded root-local rewrites can preserve known-but-undefined helpers and unknown surrounding column types without inferring their behavior. Those proposals remain unvalidated; actual helper definitions are required before comparison queries are exported. TODAY stays live in production and is frozen only in validation queries; NOW and random evaluation remain blocked. No variable hoisting, join reordering, general filter pushdown, automatic pre-aggregation or runtime plan fusion is implemented. The search emits at most 32 isolated proposals and a 16-step bounded fixed-point combination per measure. No timing benefit is inferred: the DAX engine may already normalize the alternatives.
 
@@ -674,10 +676,16 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.17.0.
+MIT licensed. Version 0.18.0.
 
 ## Contributing and data handling
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development instructions and [SECURITY.md](SECURITY.md) for security reporting. All bundled models and telemetry are fictional. Keep model exports, generated reports, source data, credentials and local validation artifacts outside Git; these may contain business logic or sensitive values.
 
 Scoped-variable syntax follows Microsoft’s [VAR reference](https://learn.microsoft.com/en-us/dax/var-dax). The recognized scalar forms follow [IF](https://learn.microsoft.com/en-us/dax/if-function-dax) and [DIVIDE](https://learn.microsoft.com/en-us/dax/divide-function-dax); this bounded representation does not implement a DAX engine.
+
+### Public report corpus
+
+A pinned ten-report Microsoft sample corpus contains 250 explicit measures. Every measure was attempted against the original embedded data in four representative contexts on Windows. 245 measures ran in all contexts; five published measures reference missing columns. Two experimental rewrite rounds found floating-point counterexamples to both division replacement and denominator caching. Both rules now retain floating-point formulas. Three aggregate/helper proposals remain eligible; **no clear speedup was established**. Constant DAX string format expressions are preserved as static formats; contextual formatting retains its guards.
+
+See [the public corpus methodology and aggregate results](benchmarks/public-samples-20261021/README.md). PBIX files, embedded data, raw cell outputs and private regressions are not distributed. These are finite warm client timings, not exhaustive equivalence proofs, isolated measure CPU or production predictions.

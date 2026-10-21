@@ -245,7 +245,8 @@ class ParserTests(unittest.TestCase):
         p = self.write('a.tmdl', "table T\n\tcolumn A = 1\n\tmeasure M = SUM(T[A])\n\t\tformatStringDefinition\n\t\t\texpression = \"0.0\"\n\tpartition P = calculated\n\t\tmode: import\n\t\tsource = {1,2}\n")
         m = load_model(p); g = DependencyGraph(m)
         self.assertEqual(m.entities[m.tables['T'].id].expression, '{1,2}')
-        self.assertTrue(any(m.entities[n].kind == 'format_string'for n in g.dependencies[m.measure('M').id]))
+        self.assertFalse(any(m.entities[n].kind == 'format_string'for n in g.dependencies[m.measure('M').id]))
+        self.assertEqual(m.measure('M').metadata['format_string'], '0.0')
 
     def test_utf16_and_utf8_bom(self):
         for encoding in ['utf-16', 'utf-8-sig']:

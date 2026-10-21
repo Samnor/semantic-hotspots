@@ -51,6 +51,19 @@ RULES = {
                                  'Model references are qualified to prevent caller scope capture; original helpers remain unchanged',
                                  'Bounded expansion; no calculation groups, functions, dynamic formatting or volatile helpers'],
                'source_url': 'https://learn.microsoft.com/en-us/dax/calculate-function-dax'},
+    'OPT006': {'title': 'Replace a guarded numeric division with DIVIDE',
+               'preconditions': ['IF tests the same numeric denominator against zero using <>',
+                                 'The true branch divides by that denominator and the false branch is BLANK',
+                                 'Exact numeric helper definitions are fully bound and deterministic; floating-point operands retain the division operator',
+                                 'Exact values and BLANK behavior must pass engine validation before timing'],
+               'source_url': 'https://learn.microsoft.com/en-us/dax/best-practices/dax-divide-function-operator'},
+    'OPT007': {'title': 'Evaluate a repeated exact numeric denominator once',
+               'preconditions': ['Exact numeric operands; floating-point and unknown operands are retained after engine counterexamples',
+                                 'A measure denominator is tested against zero and repeated unchanged in the guarded division',
+                                 'The denominator is deterministic, bound and evaluated in the same row/filter context',
+                                 'A fresh local VAR retains the original IF, division operator and lazy numerator branch',
+                                 'Exact values and BLANK behavior require engine validation; no speedup is predicted'],
+               'source_url': 'https://learn.microsoft.com/en-us/dax/best-practices/dax-variables'},
 }
 
 
@@ -222,7 +235,7 @@ class _Parser:
             node = LogicalNode('binary', 'unknown', node.start, right.end, [node, right], value=op)
         return node
 
-    def bind(self, node, rows, filters, depth=0, schemas=()):
+    def bind(self, node, rows, filters, depth=0, schemas=(), column_argument=False):
         if depth > 64:
             raise ModelError('Logical subset nesting exceeds 64 levels')
         node.row_context, node.filter_context = rows, filters
@@ -236,7 +249,11 @@ class _Parser:
                 child_schemas += (source.table_columns if source.result_type == 'table' else None,)
             if node.operation == 'CALCULATE' and i == 0:
                 child_filters += ('CALCULATE: transition/modified filters',)
-            self.bind(child, child_rows, child_filters, depth+1, child_schemas)
+            accepts_column = (node.operation in {'SUM', 'MAX', 'MIN', 'AVERAGE', 'COUNT', 'COUNTA',
+                              'DISTINCTCOUNT', 'VALUES', 'ALL', 'REMOVEFILTERS'} and
+                              (i == 0 or node.operation in {'ALL', 'REMOVEFILTERS'}))
+            self.bind(child, child_rows, child_filters, depth+1, child_schemas,
+                      column_argument=accepts_column or (node.operation == 'group' and column_argument))
         c, op = node.children, node.operation
         node.supported = all(x.supported for x in c)
         if op == 'scan':
@@ -244,7 +261,7 @@ class _Parser:
                                   if e.kind == 'column' and e.table == node.table}
             return
         if op == 'unbound_reference':
-            self.bind_reference(node, schemas)
+            self.bind_reference(node, schemas, column_argument)
             return
         if op in {'column', 'measure', 'literal'}:
             return
@@ -299,9 +316,13 @@ class _Parser:
             node.result_type = 'filter_modifier'
         elif op == 'SUM' and len(c) == 1 and _plain(c[0]).operation == 'column' and c[0].result_type in _NUMERIC:
             node.result_type = c[0].result_type
+        elif op == 'AVERAGE' and len(c) == 1 and _plain(c[0]).operation == 'column' and c[0].result_type in _NUMERIC:
+            node.result_type = 'number'
+        elif op in {'COUNT', 'COUNTA', 'DISTINCTCOUNT'} and len(c) == 1 and _plain(c[0]).operation == 'column':
+            node.result_type = 'int64'
         elif op in {'MAX', 'MIN'} and len(c) == 1 and _plain(c[0]).operation == 'column':
             node.result_type = c[0].result_type if c[0].result_type != 'unknown' else 'scalar'
-        elif op == 'VALUES' and len(c) == 1 and _plain(c[0]).operation in {'scan', 'column'}:
+        elif op in {'VALUES', 'ALL'} and len(c) == 1 and _plain(c[0]).operation in {'scan', 'column'}:
             base = _plain(c[0])
             node.result_type, node.table = 'table', base.table
             node.table_columns = (dict(base.table_columns) if base.operation == 'scan'
@@ -340,7 +361,7 @@ class _Parser:
     def column_schema(entity):
         return {'name': entity.name, 'kind': 'column', 'target': entity.id, 'result_type': _type(entity)}
 
-    def bind_reference(self, node, schemas):
+    def bind_reference(self, node, schemas, column_argument=False):
         key = node.value.casefold()
         candidates = self.resolver.bare.get(key, [])
         row_column = None
@@ -358,6 +379,10 @@ class _Parser:
             node.table = self.model.entities[node.target].table if node.operation == 'column' else None
             return
         target, _ = self.resolver.resolve(node.value, owner=self.owner)
+        if target and column_argument and self.model.entities[target].kind == 'column':
+            entity = self.model.entities[target]
+            node.operation, node.target, node.result_type, node.table = 'column', target, _type(entity), entity.table
+            return
         if target and self.model.entities[target].kind == 'measure':
             node.operation, node.target, node.result_type = 'measure', target, 'scalar'
             return
@@ -436,14 +461,62 @@ def _additive_column(node,model,seen=frozenset()):
     return None
 
 
-def _matches(tree, text, model):
+def _matches(tree, text, model, notes=None):
     matches = []
     definitions = {}
     def collect(node):
         if node.operation == 'variable_definition':definitions[node.target] = node.children[0]
         for child in node.children:collect(child)
     collect(tree)
+    numeric_helpers = {}
+    def numeric(node, seen=frozenset(), exact=False):
+        node = _plain(node)
+        if node.operation == 'measure':
+            if node.target in seen or len(seen) >= 32:return False
+            key = (node.target, exact)
+            if key in numeric_helpers:return numeric_helpers[key]
+            numeric_helpers[key] = False
+            helper = model.entities[node.target]
+            bound, issues = logical_plan(helper.expression or '', model, helper)
+            numeric_helpers[key] = not issues and numeric(bound, seen | {node.target}, exact)
+            return numeric_helpers[key]
+        if node.operation == 'literal':return node.result_type == 'number' and (not exact or node.value.isdigit())
+        allowed = {'int64', 'decimal', 'fixeddecimal', 'currency'} if exact else _NUMERIC | {'number'}
+        if node.operation == 'column':return node.result_type in allowed
+        if node.operation in {'SUM', 'MAX', 'MIN', 'AVERAGE', 'COUNT', 'COUNTA', 'DISTINCTCOUNT', 'COUNTROWS'}:
+            return node.supported and node.result_type in allowed
+        if node.operation == 'CALCULATE':return numeric(node.children[0], seen, exact)
+        if node.operation == 'binary' and node.value in ({'+', '-'} if exact else {'+', '-', '*', '/'}):
+            return all(numeric(c, seen, exact) for c in node.children)
+        return False
+    def same(left, right):
+        left, right = _plain(left), _plain(right)
+        return (left.operation, left.target, left.value, len(left.children)) == (right.operation, right.target, right.value, len(right.children)) and all(same(a,b) for a,b in zip(left.children,right.children))
     def visit(node):
+        if node.operation == 'IF' and len(node.children) == 3:
+            condition, division, alternate = map(_plain, node.children)
+            if (condition.operation == 'binary' and condition.value == '<>' and
+                    division.operation == 'binary' and division.value == '/' and
+                    alternate.operation == 'BLANK' and not alternate.children):
+                denominator, zero = map(_plain, condition.children)
+                if denominator.operation == 'literal':denominator, zero = zero, denominator
+                if (zero.operation == 'literal' and zero.result_type == 'number' and float(zero.value) == 0 and
+                        denominator.operation != 'literal' and
+                        same(denominator, division.children[1]) and
+                        all(numeric(c) for c in division.children)):
+                    numerator, divisor = division.children
+                    if all(numeric(c, exact=True) for c in division.children):
+                        matches.append(('OPT006', node.start, node.end,
+                                        f'DIVIDE({text[numerator.start:numerator.end]}, {text[divisor.start:divisor.end]})'))
+                        if denominator.operation == 'measure':
+                            names = {t.value.casefold() for t in tokenize(text) if t.kind == 'NAME'}
+                            name = '__SH_Denominator'
+                            while name.casefold() in names or name.casefold() in {t.casefold() for t in model.tables}:name += '_'
+                            matches.append(('OPT007', node.start, node.end,
+                                f'(VAR {name} = {text[divisor.start:divisor.end]} RETURN IF({name} <> 0, {text[numerator.start:numerator.end]} / {name}, BLANK()))'))
+                    elif notes is not None:
+                        reason = 'Guarded division retained: floating-point or unestablished operands can change exact results when division or variable rewrites change aggregation order.'
+                        if reason not in notes:notes.append(reason)
         if node.operation == 'SUMX':
             table, column = map(_plain, node.children)
             if (not node.row_context and table.operation=='VALUES' and len(table.children)==1
@@ -505,7 +578,8 @@ def _type_gap_only(tree):
     definitions = {n.target:n.children[0] for n in nodes if n.operation == 'variable_definition'}
     arities = {'TRUE':{0},'FALSE':{0},'BLANK':{0},'TODAY':{0},'DATE':{3},'YEAR':{1},
                'ISBLANK':{1},'NOT':{1},'IF':{2,3},'DIVIDE':{2,3},'SUM':{1},'MAX':{1},
-               'MIN':{1},'VALUES':{1},'SUMX':{2},'FILTER':{2},'ISEMPTY':{1},'COUNTROWS':{1}}
+               'MIN':{1},'AVERAGE':{1},'COUNT':{1},'COUNTA':{1},'DISTINCTCOUNT':{1},
+               'ALL':{1},'VALUES':{1},'SUMX':{2},'FILTER':{2},'ISEMPTY':{1},'COUNTROWS':{1}}
     structural = {'scan','column','measure','literal','variable_reference','variable_definition',
                   'let','group','unary','binary','extension_column'}
     def unknown(node, seen=frozenset()):
@@ -664,7 +738,7 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
                                    'missing_helper_definitions_assumed':False},
                                'dag_comparison': comparison})
         if not diagnostics:
-            for rule, start, end, replacement in _matches(tree, before, model)[:32]:
+            for rule, start, end, replacement in _matches(tree, before, model, notes=notes)[:32]:
                 candidate(before[:start]+replacement+before[end:], [{'rule': rule, 'source_span': [start, end],
                                                                       'before': before[start:end], 'after': replacement}])
             current, steps = before, []

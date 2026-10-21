@@ -142,7 +142,7 @@ def _create_from_review(model, review, *, progress=None):
     comparison['creation'] = {'outcome':'rewritten' if chosen else 'unchanged_copy',
                               'explanation':explanation,'reason_kind':reason_kind,'reasons':diagnostics}
     measure_object={'name':created.name,'expression':expression}
-    if owner.metadata.get('format_string'):measure_object['formatString']=owner.metadata['format_string']
+    if owner.metadata.get('format_string') is not None:measure_object['formatString']=owner.metadata['format_string']
     return CreatedMeasure({'schema_version':'1.0','kind':'created-measure','original_measure_id':owner.id,
         'original_name':owner.name,'measure_id':created.id,'name':created.name,'table':created.table,
         'expression':expression,'definition':created.name+' =\n'+expression+'\n','measure_object':measure_object,

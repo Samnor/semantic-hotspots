@@ -5,3 +5,4 @@ recursive-include tests *.py
 recursive-include tools *.py
 include .github/workflows/test.yml
 recursive-include src/semantic_hotspots/assets *.html *.bim *.json
+recursive-include benchmarks *.md *.json

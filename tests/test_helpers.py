@@ -106,7 +106,8 @@ class HelperRecoveryTests(unittest.TestCase):
             recovered=recover_helpers_from_desktop(original,'Total',server='localhost:55555',database='explicit')
         self.assertEqual(len(queries),3);self.assertFalse(recovered.remaining)
         self.assertEqual(recovered.model.measure('Helper').expression,'YEAR(TODAY())')
-        self.assertTrue(any(e.kind=='format_string' for e in recovered.model.entities.values()))
+        self.assertFalse(any(e.kind=='format_string' for e in recovered.model.entities.values()))
+        self.assertEqual(recovered.model.measure('Helper').metadata['format_string'],'0')
         self.assertIsNone(original.measure('Helper').expression)
         rows['MEASURES'][0]['Expression']=''
         with patch('semantic_hotspots.engine.query_to_csv',side_effect=query),self.assertRaisesRegex(ModelError,'root definition'):

@@ -123,7 +123,7 @@ class LogicalRewriteTests(unittest.TestCase):
         data['model']['tables'][0]['measures'].append({'name':'Volatile','expression':'RAND()'})
         self.assertFalse(plan_rewrites(data).candidates)
         data = source()
-        data['model']['tables'][0]['measures'][0]['formatStringDefinition'] = {'expression': '"0.0"'}
+        data['model']['tables'][0]['measures'][0]['formatStringDefinition'] = {'expression': 'IF([Dependent]>0,"0.0","0")'}
         self.assertFalse(plan_rewrites(data).candidates)
 
     def test_report_and_json_include_candidates_escaped_and_unvalidated(self):

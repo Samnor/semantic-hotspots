@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.18.0
+
+- Bind unqualified home-table columns only in supported column argument positions; recognize AVERAGE, COUNT/COUNTA, DISTINCTCOUNT and single-argument ALL without allowing naked scalar column references.
+- Add guarded exact-numeric IF/division alternatives using DIVIDE or a fresh denominator VAR. Retain floating-point operands after two real-engine counterexample rounds; emit a specific guard explanation.
+- Normalize literal DAX string format expressions into preserved static formats across BIM, TMDL and Desktop recovery. Keep contextual/malformed format expressions guarded and recover missing matching helper formatting metadata.
+- Record a pinned ten-report, 250-measure public sample audit with matched query-scoped paths, strict value/BLANK checks and alternating warm timings. No clear performance improvement was established; keep failed candidates and unchanged measures visible in aggregate evidence.
+
 ## 0.17.0
 
 - Tighten OPT003 to exact numeric stored columns after a real-engine floating-point counterexample; retain BLANK filters for double or unestablished scalar values.

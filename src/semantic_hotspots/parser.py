@@ -41,9 +41,22 @@ def _decode(data: bytes) -> str:
 def _add_format(model: Model, owner: Entity, obj: dict) -> None:
     fmt = obj.get("formatStringDefinition") or {}
     if fmt.get("expression") is not None:
-        model.add(Entity("format_string", owner.table, owner.name + " (format string)",
-                         _expression(fmt['expression']), owner.source, owner.line,
-                         {"for_measure": owner.id} if owner.kind == 'measure' else {}))
+        _format_expression(model, owner, _expression(fmt['expression']))
+
+
+def _format_expression(model: Model, owner: Entity, expression: str | None, *, line: int | None = None) -> None:
+    """A single DAX string literal has no context-dependent format behavior."""
+    from .dax import tokenize
+    try:
+        tokens = tokenize(expression or '')
+    except ModelError:
+        tokens = []
+    if owner.kind == 'measure' and len(tokens) == 1 and tokens[0].kind == 'STRING':
+        owner.metadata['format_string'] = tokens[0].value
+        return
+    model.add(Entity('format_string', owner.table, owner.name + ' (format string)',
+                     expression, owner.source, owner.line if line is None else line,
+                     {'for_measure': owner.id} if owner.kind == 'measure' else {}))
 
 
 def _json_model(raw: dict, source: str) -> Model:
@@ -217,8 +230,7 @@ def _tmdl_documents(documents: list[tuple[str, str]]) -> Model:
                     model.entities[owner['table'].id].expression = expr
                 elif typ == 'formatstringdefinition' and owner.get('owner'):
                     e = owner['owner']
-                    model.add(Entity('format_string', e.table, e.name + ' (format string)', expr, source, i + 1,
-                                     {'for_measure': e.id} if e.kind == 'measure' else {}))
+                    _format_expression(model, e, expr, line=i + 1)
                 i = following
                 continue
             elif re.match(r'^(role|tablePermission)\b', text, re.I):

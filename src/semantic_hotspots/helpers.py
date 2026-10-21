@@ -74,9 +74,10 @@ def recover_helpers(source, supplement, measure, *, table=None, require_root_mat
             if current.kind=='measure' and not _defined(current) and _defined(entity):
                 current.expression=entity.expression;current.source=entity.source
                 current.metadata=dict(current.metadata,definition_provenance=provenance)
-            if current.kind=='column':
+            if current.kind in {'column','measure'}:
                 for key,value in entity.metadata.items():
-                    if not current.metadata.get(key) and value is not None:current.metadata[key]=copy.deepcopy(value)
+                    missing = current.metadata.get(key) is None if current.kind=='measure' else not current.metadata.get(key)
+                    if missing and value is not None:current.metadata[key]=copy.deepcopy(value)
     # Resolve names in the combined catalog, then retain only the selected chain
     # and entities already present in the source. This recovers transitive helpers
     # without adding every unrelated measure to the user's analysis.
@@ -103,6 +104,9 @@ def recover_helpers(source, supplement, measure, *, table=None, require_root_mat
             recovered.append(identity)
         elif old.kind=='column':
             old.metadata=copy.deepcopy(entity.metadata)
+        if old is not None and old.kind=='measure':
+            for key,value in entity.metadata.items():
+                if old.metadata.get(key) is None and value is not None:old.metadata[key]=copy.deepcopy(value)
     # Context-sensitive models cannot be silently presented as ordinary measure
     # catalogs. Retain explicit markers even if they are not direct references.
     for entity in extra.entities.values():
@@ -159,8 +163,7 @@ def recover_helpers_from_desktop(source, measure, *, table=None, server, databas
         extra.add(Entity('measure',table_name,name,row.get('Expression') or None,
                          metadata={'format_string':row.get('FormatString')}))
         if row.get('FormatStringDefinition'):
-            owner_id=extra.measure(name,table_name).id
-            extra.add(Entity('format_string',table_name,name+' (format string)',row['FormatStringDefinition'],
-                             metadata={'for_measure':owner_id}))
+            from .parser import _format_expression
+            _format_expression(extra,extra.measure(name,table_name),row['FormatStringDefinition'])
     return recover_helpers(original,extra,owner.id,require_root_match=True,
                            provenance='matching local Desktop model metadata')
