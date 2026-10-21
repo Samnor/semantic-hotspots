@@ -234,15 +234,23 @@ def _svg(graph, wanted=None, highlights=None):
         for child in children[n]:depth[child] = max(depth[child], depth[n]+1)
     layers = defaultdict(list)
     for n in order:layers[depth[n]].append(n)
-    width = max((len(row)*270 for row in layers.values()), default=270)
+    content_width = max((len(row)*270 for row in layers.values()), default=270)
+    width = content_width + 32  # Right-hand lanes keep long edges off node boxes.
     height = (max(layers, default=0)+1)*100
-    positions = {n: ((width-len(row)*270)/2+i*270+10, level*100+8)
+    positions = {n: ((content_width-len(row)*270)/2+i*270+10, level*100+8)
                  for level,row in layers.items() for i,n in enumerate(sorted(row))}
     esc = lambda x: html.escape(str(x), quote=True)
     svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" role="img" aria-label="Consumer to dependency DAG"><title>Static computation DAG; arrows point to dependencies</title>']
+    long_edges = 0
     for e in edges:
-        x,y=positions[e['from']];a,b=positions[e['to']];x+=125;y+=62;a+=125
-        svg.append(f'<path d="M{x} {y} C{x} {y+22} {a} {b-22} {a} {b}" fill="none" stroke="#72908a"/><path d="M{a-4} {b-6} L{a} {b} L{a+4} {b-6}" fill="none" stroke="#72908a"/>')
+        x,y=positions[e['from']];a,b=positions[e['to']]
+        if depth[e['to']] - depth[e['from']] > 1:
+            x+=250;y+=31;a+=250;b+=31
+            lane=width-8-(long_edges%3)*10;long_edges+=1
+            svg.append(f'<path d="M{x} {y} C{x+16} {y} {lane} {y} {lane} {y+20} L{lane} {b-20} C{lane} {b} {a+16} {b} {a} {b}" fill="none" stroke="#72908a"/><path d="M{a+6} {b-4} L{a} {b} L{a+6} {b+4}" fill="none" stroke="#72908a"/>')
+        else:
+            x+=125;y+=62;a+=125
+            svg.append(f'<path d="M{x} {y} C{x} {y+22} {a} {b-22} {a} {b}" fill="none" stroke="#72908a"/><path d="M{a-4} {b-6} L{a} {b} L{a+4} {b-6}" fill="none" stroke="#72908a"/>')
     for identity,(x,y) in positions.items():
         n=nodes[identity];color='#fff2dc' if n.get('materialized') or n.get('definition_phase')=='refresh' else '#e7f2ed' if n['type'] in {'measure','operation'} else '#f1f4f3'
         status=(highlights or {}).get(identity,'')
@@ -254,7 +262,7 @@ def _svg(graph, wanted=None, highlights=None):
     return ''.join(svg)+'</svg>'
 
 
-DAG_CSS = '''.dag-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.dag-side{min-width:0;overflow-wrap:anywhere;border:1px solid #ccdcd5;border-radius:8px;padding:16px;background:#fff}.dag-side h3{margin-top:0}.dag-diagram{overflow:auto;max-height:600px;background:#fafcfb}.dag-side pre{max-height:340px;overflow:auto}.dag-note{border-left:3px solid #087969;padding:10px 14px;background:#e7f2ed}.dag-edges{overflow-wrap:anywhere;font-size:13px}@media(max-width:850px){.dag-pair{grid-template-columns:1fr}}'''
+DAG_CSS = '''.dag-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.dag-side{min-width:0;overflow-wrap:anywhere;border:1px solid #ccdcd5;border-radius:8px;padding:16px;background:#fff}.dag-side h3{margin-top:0}.dag-diagram{overflow:auto;max-height:900px;background:#fafcfb}.dag-side pre{max-height:340px;overflow:auto}.dag-note{border-left:3px solid #087969;padding:10px 14px;background:#e7f2ed}.dag-edges{overflow-wrap:anywhere;font-size:13px}@media(max-width:850px){.dag-pair{grid-template-columns:1fr}}'''
 
 
 def render_dag_comparison(comparison):
@@ -268,7 +276,11 @@ def render_dag_comparison(comparison):
         definitions=''.join('<details><summary>'+esc(n['label'])+' · '+esc(n['type'])+' · '+esc(n['definition_phase'])+'</summary><pre>'+esc(n.get('expression') or 'Stored data / metadata object')+'</pre></details>' for n in g['nodes'])
         edge_list=''.join('<li>'+esc(nodes[e['from']]['label'])+' → '+esc(nodes[e['to']]['label'])+' <small>'+esc(e['kind'])+((' · argument '+str(e['argument'])) if 'argument' in e else '')+'</small></li>' for e in g['edges'])
         refresh=('<details><summary>Refresh-time lineage and materialization</summary><p>Stored definitions are built on refresh. These dependencies remain part of the full lineage; they are not assumed to run per query.</p><div class="dag-diagram">'+_svg(g,g['refresh_time_node_ids'],highlights)+'</div></details>') if g['materialization_node_ids'] else ''
-        issues=('<p class="dag-note">Some syntax or bindings need review. Opaque DAX, unresolved references, missing definitions and logical-subset diagnostics remain in the full detail. Parsed calls outside that subset show syntax, not established type/context semantics.</p>') if g['diagnostics'] or not g['dependency_complete'] else ''
+        notes=[]
+        if not g['dependency_complete']:notes.append('The dependency chain is incomplete or cyclic; inspect unresolved references and missing definitions below.')
+        if not g['operator_complete']:notes.append('Some DAX is opaque; its exact definition and resolved references are retained without invented operator topology.')
+        elif g['diagnostics']:notes.append('Some parsed calls lack established type/context semantics. They are labelled “syntax only”; diagnostics are retained below.')
+        issues=('<p class="dag-note">'+esc(' '.join(notes))+'</p>') if notes else ''
         sides.append(f'<section class="dag-side"><h3>{title}</h3><p>{esc(root["label"])}</p><pre>{esc(root["expression"] or "Definition missing")}</pre>{issues}<h4>Query-time dependency view</h4><div class="dag-diagram">{_svg(g,g["query_time_node_ids"],highlights)}</div>{refresh}<details><summary>Every node, definition and edge · {len(g["nodes"])} nodes / {len(g["edges"])} edges</summary>{definitions}<ol class="dag-edges">{edge_list}</ol><pre>{esc(json.dumps({k:g[k] for k in ["unresolved","missing_definitions","diagnostics","evaluation_order"]},ensure_ascii=False,indent=2))}</pre></details></section>')
     delta=comparison['difference']
     summary=comparison['summary']
