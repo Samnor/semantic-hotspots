@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.2
+
+- Label the Power BI Desktop measure definition separately from a DAX Studio query preview.
+- Include preview-query.dax with a quoted query-scoped DEFINE MEASURE and EVALUATE ROW, plus HOW-TO-USE.txt, in every created-measure package.
+- Keep query previews separate from guarded validation; they do not save model measures, establish equivalence, or bypass optimizer blockers.
+
 ## 0.14.1
 
 - Identify dependency blockers individually, separating scope uncertainty, unresolved references, missing definitions, syntax-scan failures and detected cycles.

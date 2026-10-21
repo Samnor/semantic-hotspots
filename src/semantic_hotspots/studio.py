@@ -325,7 +325,7 @@ class Studio:
                 created.write(root/'new-measure')
                 generated=f'/artifacts/{key}/new-measure/'
                 value['created']={k:copy.deepcopy(created.data[k]) for k in ['measure_id','name','table','definition','expression','outcome','explanation','diagnostics','validation_available']}
-                value['created'].update(url=generated+'report.html',dax=generated+'new-measure.dax',zip=generated+'new-measure.zip',
+                value['created'].update(url=generated+'report.html',dax=generated+'new-measure.dax',query=generated+'preview-query.dax',zip=generated+'new-measure.zip',
                     comparison=generated+'dags/report.html',validation=generated+'validate-total.dax' if created.data['validation_available'] else None,
                     contexts=generated+'visual-context-queries.zip' if (root/'new-measure/visual-context-queries.zip').is_file() else None)
             self.measure_review=review
