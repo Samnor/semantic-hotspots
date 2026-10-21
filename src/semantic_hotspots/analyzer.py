@@ -19,7 +19,7 @@ from .profile import RuntimeProfile
 from .rules import inspect_expression, relationship_findings
 from .progress import emit
 
-VERSION = '0.10.0'
+VERSION = '0.11.0'
 SCORE_DESCRIPTION = (
     'Ordinal review priority, not elapsed time, engine work, row scans or CU. '
     'Each nonempty expression starts at 1 point; named rules add their documented points. '
@@ -88,7 +88,7 @@ class Analysis:
 
 
 def analyze(model: Model | str | Path | dict, *, profile: RuntimeProfile | None = None,
-            rank_by: str | None = None, progress=None) -> Analysis:
+            rank_by: str | None = None, progress=None, include_rewrites: bool = True) -> Analysis:
     emit(progress, 'load', 'Read model', detail='Read semantic model metadata')
     if isinstance(model, dict):
         model = parse_model(model)
@@ -170,5 +170,9 @@ def analyze(model: Model | str | Path | dict, *, profile: RuntimeProfile | None 
         return (value is None, -(value or 0), item['id'])
     ranked.sort(key=sort_key)
     from .optimizer import plan_rewrites
-    rewrites = plan_rewrites(model, graph=graph, ranked_ids=[r['id'] for r in ranked], progress=progress)
+    if include_rewrites:
+        rewrites = plan_rewrites(model, graph=graph, ranked_ids=[r['id'] for r in ranked], progress=progress)
+    else:
+        emit(progress,'rewrites','Prepare measure selection',detail='Rewrite proposals will be checked after you choose a measure')
+        rewrites = None
     return Analysis(model, graph, ranked, rank_by, list(dict.fromkeys(warnings)), profile, rewrites)

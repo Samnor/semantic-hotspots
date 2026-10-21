@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.10.0/semantic_hotspots-0.10.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.11.0/semantic_hotspots-0.11.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.10.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.11.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -36,7 +36,7 @@ The command opens a local browser interface. Select a PBIP, BIM or TMDL model wi
 
 During analysis, a persistent activity panel shows the actual stage, current measure/object, completed-item counts where known, elapsed time and completed stages. Model reading, dependency tracing, rule/ranking review, rewrite checks, matrix grain review and report writing have separate checkpoints. A responsive Studio with no new work checkpoint is distinguished from a lost browser connection. Remaining time is unknown; no overall percentage or ETA is fabricated. Completion and failures remain visible, with a link to findings or an analysis retry. Matrix eligibility checks reuse the same request’s analysis instead of repeatedly reanalyzing every measure.
 
-Studio walks through ranked findings, proposed summary grains, one-page comparison generation and validation. Download the whole generated ZIP, or use **Open in Power BI Desktop** on Windows. Opening and refreshing remain explicit Desktop steps. Then find the loaded models, choose the comparison using the matching-definition hint, and click **Validate, then benchmark**. Ports, query filenames and CSV flags are handled by the workflow. A matching hint does not auto-select or fully attest a loaded model.
+Studio starts with measure selection and root-only proposals. A landing matrix is optional and defaults to None — measure only. Initial analysis ranks measures and defers rewrite checks until one is selected. Download the whole generated ZIP, or use **Open in Power BI Desktop** on Windows. Opening and refreshing remain explicit Desktop steps. Then find the loaded models, choose the comparison using the matching-definition hint, and click **Validate, then benchmark**. Ports, query filenames and CSV flags are handled by the workflow. A matching hint does not auto-select or fully attest a loaded model.
 
 Optionally choose a native **Performance Analyzer version 1.0.0 JSON export** when opening a model. Known recorded DAX contexts sort first; unknown contexts retain static priority. Measure associations use bound query references, and matrix associations require an exact unambiguous visual ID. Titles are not fuzzy-matched. These are inclusive/shared DSE wall-clock query durations through first row, not isolated measure cost, full result-reading time, CPU or FE/SE. Missing/truncated events and query-scoped bindings stay explicit. See Microsoft's [export schema](https://github.com/microsoft/powerbi-desktop-samples/blob/main/Performance%20Analyzer/performanceAnalyzerExport.schema.json) and [event-format documentation](https://github.com/microsoft/powerbi-desktop-samples/blob/main/Performance%20Analyzer/Power%20BI%20Performance%20Analyzer%20Export%20File%20Format.docx). Recordings are read offline and never executed.
 
@@ -54,12 +54,17 @@ The guided runner is covered by synthetic orchestration, HTTP and browser-flow c
 
 ## Optimize one selected measure
 
-After **Analyze model**, use **Optimize one measure** above the matrix workflow:
+After **Analyze model**, use **Optimize one measure**:
 
 1. Search all measures by name or table and choose exactly one.
-2. Click **Find improvements**, or use **Optimize this measure** on a ranked row.
-3. Choose a proposal to see its DAX, copy/download it, and compare the complete original/proposed DAGs.
-4. Download the proposal’s total validation query and test it against the same loaded model before applying any edit. Check actual report contexts and timings separately.
+2. Optionally expand **Optional landing visual** and choose a matrix; leave **None — measure only** for standalone review.
+3. Click **Find improvements**, or use **Optimize this measure** on a ranked row.
+4. Choose a proposal to see its DAX, copy/download it, and compare the complete original/proposed DAGs.
+5. Download the proposal’s total validation query and test it against the same loaded model before applying any edit. Check actual report contexts and timings separately.
+
+The optional landing visual retains the selected matrix’s axes, filters, drill/total settings and unsupported-context flags, replacing only its displayed values with the selected measure. It never selects additional optimization roots. Supported, explicitly reviewed contexts generate downloadable baseline/candidate/validation prefix queries; these are representative workloads, not the exact rendered Power BI query. Partial or unsupported contexts withhold those queries while measure proposals remain available. Clearing the landing visual or changing the measure clears its generated comparison and model selection. Optional matrix-import errors leave measure analysis available.
+
+For eligible contexts, **Build landing comparison** creates a separate summary-table alternative with exactly one baseline/candidate pair in the chosen matrix. This alternative is distinct from a selected DAX rewrite. The generated model is synthetic; the matrix’s original value measures are not all optimized or copied. Ranked measures remain available in the secondary **All measures** panel.
 
 No matrix is required. Only the selected measure’s proposed expression changes; helper definitions remain context. Unsupported syntax, incomplete dependencies or unmatched rules produce an explicit explanation, not a claim that the measure is optimal. You can also paste your own proposed expression under **Compare my own proposed DAX**. This compares graphs without applying or validating the edit. In the bundled demo, choose **Sales · Revenue iterator** to inspect a guarded `SUMX → SUM` proposal.
 
@@ -69,6 +74,8 @@ The same root-only review is available without Studio:
 
 ```powershell
 python -m semantic_hotspots optimize-measure model.bim "Revenue" --table Sales -o revenue-review
+# Optional explicit landing context:
+python -m semantic_hotspots optimize-measure model.bim "Revenue" --table Sales --matrices matrices.json --landing-matrix monthly -o revenue-with-context
 ```
 
 ```python
@@ -76,9 +83,10 @@ from semantic_hotspots import review_measure
 
 review = review_measure("model.bim", "Revenue", table="Sales")
 review.write("revenue-review")  # Choose an absent or empty output directory.
+# Optional: review_measure(model, "Revenue", table="Sales", landing_matrix=matrix_spec)
 ```
 
-Open `revenue-review/report.html`. It includes exact original DAX, the full original chain, diagnostics and only this measure’s proposals. Each proposal has paired DAG exports, proposed DAX and a total validation query. Source models stay unchanged. `plan_rewrites(..., measure="Revenue", table="Sales")` also restricts rule evaluation to one root.
+Open `revenue-review/report.html`. It includes exact original DAX, the full original chain, diagnostics and only this measure’s proposals. Each proposal has paired DAG exports, proposed DAX and a total validation query. Source models stay unchanged. Cyclic/incomplete user-authored proposals retain their comparison graphs but withhold validation probes. `analyze(..., include_rewrites=False)` ranks/scans without generating all rewrite proposals; Studio uses this mode initially. `plan_rewrites(..., measure="Revenue", table="Sales")` also restricts rule evaluation to one root.
 
 ## Analyze a semantic model
 
@@ -287,7 +295,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.10.0/semantic_hotspots-0.10.0-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.11.0/semantic_hotspots-0.11.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -548,6 +556,8 @@ python -m semantic_hotspots project examples/matrix-model.bim --matrices example
 
 Copy the entire output folder to Windows, open `Showcase.pbip` in a current Power BI Desktop with PBIP/PBIR support, and refresh. Its new `Showcase.SemanticModel/model.bim` embeds compressed mock CSV data in Import partitions, so the showcase needs no real sources, credentials or machine-specific CSV path. A 32 MiB uncompressed embedded-data limit keeps this a small example; reduce simulation row counts if needed. The `simulation` subdirectory is an inspectable mock-data bundle; its separate file-based BIM is not the embedded-data Showcase model.
 
+For a measure-focused landing export, pass `--measure "Revenue" --table Sales --matrix MATRIX_ID` to `project`; the matrix’s values become only that measure’s baseline/candidate pair and the remaining context/guards stay intact. Without measure scoping, the library retains its existing matrix-wide export behavior.
+
 The exporter selects the highest static-priority **eligible** matrix, or the exact ID supplied by `--matrix`. It keeps only the selected baseline measure chains, physical columns and necessary dimension paths in a metadata projection. It adds a DAX calculated summary table at the relationship-preserving key grain and candidate measures that recombine its states. The original measures remain intact in this isolated model. Ratios are recomputed from components; averages use sum/count states and distinct counts retain their keys. This is a refresh-time materialization with explicit candidate measures, not automatic aggregation mappings, source SQL preaggregation, or a guaranteed performance improvement. The extra summary consumes memory and refresh work.
 
 This initial exporter requires a complete, unfiltered matrix contract, default hierarchy/total settings, one supported fact recipe and unique regular dimension paths. It rejects fact-column axes/retained filters, measure filters, explicit column filters, non-default drill/total settings, unknown metadata, opaque/context-dependent calculations, multiple facts and security gaps. It does not silently drop these features or change their grain. These restrictions are narrower than matrix *analysis*: a matrix can be analyzed even when it cannot safely produce a showcase. Future slicers outside the declared dimension contract require new grain/equivalence review. Source files are never overwritten; the destination must be absent or empty.
@@ -597,7 +607,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.10.0.
+MIT licensed. Version 0.11.0.
 
 ## Contributing and data handling
 

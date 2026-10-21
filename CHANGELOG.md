@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0
+
+- Make Studio measure-first, deferring rewrite checks until selection and moving matrices into an optional landing-visual choice with no automatic selection.
+- Retain landing axes, filters, totals/drill and unsupported flags while targeting only the selected measure; export representative context queries and root-scoped summary-table PBIP alternatives.
+- Reset stale generated projects and model selection when context changes, and keep measure analysis available when optional matrix imports fail.
+- Add explicit landing context options to optimize-measure and selected-measure scoping to project. Incomplete/cyclic custom proposals retain graphs but withhold validation probes.
+
 ## 0.10.0
 
 - Add a searchable Optimize one measure flow in Studio, with direct actions on ranked rows and no matrix requirement.

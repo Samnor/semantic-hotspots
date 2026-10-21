@@ -415,6 +415,15 @@ def _filter_dax(model,filters):
     return clauses
 
 
+def measure_landing_spec(model, measure, matrix):
+    """Copy a visual contract, replacing only its displayed value measures."""
+    owner=model.measure(measure)
+    spec=matrix if isinstance(matrix,MatrixSpec) else MatrixSpec.from_dict(matrix)
+    raw=spec.to_dict()
+    raw['values']=[[owner.table,owner.name]]
+    return MatrixSpec.from_dict(raw)
+
+
 def _workloads(model,spec,measure_ids,fingerprint):
     results=[]
     states=spec.drill_states or [{'name':'expanded','row_depth':len(spec.rows),'column_depth':len(spec.columns)}]
@@ -524,7 +533,7 @@ def analyze_matrices(source,matrices,*,benchmark=None,analysis=None,progress=Non
     specs=load_matrices(matrices)
     if analysis is not None and analysis.model is not model:
         raise ModelError('Reused analysis must belong to the same unmodified model instance')
-    analysis=analysis or analyze(model,progress=progress); by_id={r['id']:r for r in analysis.ranked}
+    analysis=analysis or analyze(model,progress=progress,include_rewrites=False); by_id={r['id']:r for r in analysis.ranked}
     fingerprint=_hash([[(e.id,e.expression,_type(e)) for e in sorted(model.entities.values(),key=lambda e:e.id)],
                        [asdict(r) for r in model.relationships]])
     output=[]; workloads=[]
