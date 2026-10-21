@@ -135,7 +135,7 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
         # A parsed call may still have unmodeled semantics, for example a model
         # function. Preserve every resolver edge instead of silently losing it.
         for dep in sorted(refs - represented):
-            edge(n, dep, 'static_reference')
+            edge(n, dep, 'static_reference', phase=phase)
     ordered = _order(nodes, edges)
     # Query reachability ends at stored definitions. Their refresh lineage is
     # still retained in the complete graph and available separately in HTML.

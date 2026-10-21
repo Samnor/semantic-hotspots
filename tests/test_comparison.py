@@ -128,6 +128,14 @@ class DagComparisonTests(unittest.TestCase):
         self.assertIn(column['id'],q);self.assertTrue(column['materialized'])
         self.assertTrue(any(n.get('operation')=='binary' and n['id'] not in q for n in g['nodes']))
 
+        # A model-function reference outside the parsed argument tree belongs
+        # to the stored definition too; it must not leak into the query path.
+        data['model']['functions']=[{'name':'Extra','expression':'() => 1'}]
+        data['model']['tables'][0]['columns'][-1]['expression']='Extra() + Orders[Amount]'
+        g=computation_dag(data,'Leaf')
+        fn=next(n['id'] for n in g['nodes'] if n['type']=='function')
+        self.assertNotIn(fn,g['query_time_node_ids']);self.assertIn(fn,g['refresh_time_node_ids'])
+
     def test_uncertain_storage_and_user_context_do_not_hide_calculated_lineage(self):
         for mode, context in [(None,None),('directQuery',None),('dual',None),('directLake',None),
                               ('import','UserContext'),('import','unknown-future-context')]:
