@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.8.0/semantic_hotspots-0.8.0-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.9.0/semantic_hotspots-0.9.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.8.0"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.9.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -257,7 +257,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.8.0/semantic_hotspots-0.8.0-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.9.0/semantic_hotspots-0.9.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -386,6 +386,42 @@ result = run_rewrite_experiment(
 Equality covers **finite tested contexts**, not universal semantic equivalence. The runner does not compare runtime type metadata, verify loaded-model identity or attest offline CSV authenticity. Numeric comparison is exact; floating-point differences fail conservatively. Synthetic equality and timings do not establish production performance, DirectQuery latency, RLS behavior or CU. Add boundary values, duplicates, blanks, detail/subtotal scenarios, and empty selections to the workload configuration. The bundled example is fictional. Local and CI engine-runner tests use mocks; a real DAX engine is a separate integration requirement.
 
 Query-scoped output collection follows the [DAX Studio CSV command](https://daxstudio.org/docs/features/command-line/commands/csv-command/). Rewrite guards use Microsoft's [SUMX](https://learn.microsoft.com/en-us/dax/sumx-function-dax) and [FILTER](https://learn.microsoft.com/en-us/dax/filter-function-dax) semantics. The design borrows the separation of analyzed logical structures and optimization rules illustrated by [Spark EXPLAIN](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-explain.html).
+
+## Original versus proposed computation DAGs
+
+Guarded rewrite proposals now include **Original measure DAG** and **Proposed measure DAG** views. In Studio, generate an eligible matrix comparison and click **Compare original & proposed DAGs**. Expand a measure to inspect both paths. The standalone comparison report also exports the full original/proposed graphs as JSON, text and Graphviz DOT.
+
+The diagrams retain helper-measure definitions and shared branches. Recognized syntax appears as operator nodes, so `SUMX → SUM` and filter fusion remain visible even when their object dependencies barely change. Borders identify nodes appearing in only one path and changed definitions. These are structural differences, not deletions from the source model or measured operation counts.
+
+For a summary candidate, the proposed query path ends at the stored summary. Expand **Refresh-time lineage and materialization** to see its `SUMMARIZE`, retained keys, aggregation states and physical inputs. Work moved to refresh is still part of the full DAG. Matrix context and added relationships are retained separately; implicit filter propagation is not invented as an execution edge.
+
+You can also compare your own proposed expression without changing the model:
+
+```powershell
+python -m semantic_hotspots compare-dags model.bim Revenue --table Sales --expression-file proposed.dax -o dag-comparison
+```
+
+Or compare against a separate proposed model, including newly added summary tables:
+
+```powershell
+python -m semantic_hotspots compare-dags original.bim Revenue --table Sales --candidate-model proposed.bim --candidate-measure "Candidate Revenue" --candidate-table Sales -o dag-comparison
+```
+
+Open `dag-comparison/report.html`. The directory includes `original.dag.json`, `proposed.dag.json`, `comparison.json`, `original.txt`, `proposed.txt`, `original.dot` and `proposed.dot`. Large diagrams use complete node/edge detail instead of truncating JSON. Cycles, unresolved references and missing formulas stay explicit. Syntax outside the parsed subset stays opaque; parsed calls outside the guarded logical subset are labelled as syntax without established type/context semantics. No result equivalence or performance improvement is inferred.
+
+```python
+from semantic_hotspots import compare_measure_dags, write_dag_comparison
+
+comparison = compare_measure_dags(
+    "model.bim", "Revenue", table="Sales",
+    proposed_expression="SUM('Sales'[Amount])",
+)
+write_dag_comparison(comparison, "dag-comparison")
+# comparison["original"] and comparison["proposed"] contain complete graphs.
+# query_time_node_ids and refresh_time_node_ids separate structural phases.
+```
+
+The same comparison snapshots are embedded in `rewrite-plan.json`, and generated showcases link them from `showcase.json`. They remain unvalidated proposals; test correctness and measure timings separately.
 
 ## Matrix-specific grain analysis
 
@@ -529,7 +565,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.8.0.
+MIT licensed. Version 0.9.0.
 
 ## Contributing and data handling
 

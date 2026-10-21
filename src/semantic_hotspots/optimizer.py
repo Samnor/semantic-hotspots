@@ -272,12 +272,14 @@ class RewritePlan:
 
     def write(self, directory):
         from .report import _CSS
+        from .comparison import DAG_CSS, write_candidate_dags
         import html
         root = Path(directory)
         root.mkdir(parents=True, exist_ok=True)
+        write_candidate_dags(self.candidates, root/'dag-comparisons')
         (root/'rewrite-plan.json').write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=2, allow_nan=False)+'\n', encoding='utf-8')
         details = ''.join('<details><summary>' + html.escape(m['measure']) + f" · {len(m['candidates'])} candidates</summary>" + render_rewrites(m) + '</details>' for m in self.measures)
-        (root/'rewrites.html').write_text(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rewrite proposals</title><style>{_CSS}</style></head><body><main><h1>Guarded rewrite proposals</h1><p>Unvalidated candidates. No source changes, DAX execution, or predicted speedup. Review the guards and validate candidates before timing.</p>{details}</main></body></html>', encoding='utf-8')
+        (root/'rewrites.html').write_text(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rewrite proposals</title><style>{_CSS}{DAG_CSS}</style></head><body><main><h1>Guarded rewrite proposals</h1><p>Unvalidated candidates. No source changes, DAX execution, or predicted speedup. Review the guards and validate candidates before timing.</p>{details}</main></body></html>', encoding='utf-8')
         return {'json': root/'rewrite-plan.json', 'html': root/'rewrites.html'}
 
 
@@ -313,6 +315,7 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None):
             after_tree, issues = logical_plan(after, model, measure)
             if issues:
                 return
+            from .comparison import compare_measure_dags
             candidates.append({'id': _digest(measure.id+'\x00'+before+'\x00'+after)[:20],
                                'measure_id': measure.id, 'measure': measure.qualified_name,
                                'before': before, 'after': after, 'before_sha256': _digest(before),
@@ -320,7 +323,8 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None):
                                'logical_before': tree.to_dict(), 'logical_after': after_tree.to_dict(),
                                'direct_dependencies_before': sorted(graph.dependencies[measure.id]),
                                'direct_dependencies_after': sorted({r.target for r in Resolver(model).scan(after, measure).references}), 'validation_status': 'not_run',
-                               'performance_status': 'unknown', 'predicted_speedup': None})
+                               'performance_status': 'unknown', 'predicted_speedup': None,
+                               'dag_comparison': compare_measure_dags(model, measure.id, proposed_expression=after, graph=graph)})
         if not diagnostics:
             for rule, start, end, replacement in _matches(tree, before, model)[:32]:
                 candidate(before[:start]+replacement+before[end:], [{'rule': rule, 'source_span': [start, end],
@@ -352,6 +356,9 @@ def render_rewrites(measure):
     diagnostics = ''.join(f'<li>{esc(x)}</li>' for x in measure['diagnostics'])
     proposals = []
     for c in measure['candidates']:
+        from .comparison import render_dag_comparison
+        dags = ('<details><summary>Original and proposed measure DAGs</summary>' + render_dag_comparison(c['dag_comparison']) +
+                '<p><a href="dag-comparisons/'+c['id']+'/report.html">Open comparison and download DAGs</a></p></details>') if c.get('dag_comparison') else ''
         rules = ', '.join(step['rule'] for step in c['steps'])
-        proposals.append(f'<details><summary>{esc(rules)} · {"combined" if c["combined"] else "isolated"} · validation not run</summary><p>Performance unknown. Compare exact results and BLANK behavior before interpreting timings.</p><h4>Before</h4><pre>{esc(c["before"])}</pre><h4>Candidate</h4><pre>{esc(c["after"])}</pre><details><summary>Rewrite steps and guards</summary><pre>{esc(json.dumps(c["steps"], indent=2))}</pre><pre>{esc(json.dumps({r: RULES[r] for r in {s["rule"] for s in c["steps"]}}, indent=2))}</pre></details><details><summary>Logical plan after</summary><pre>{esc(json.dumps(c["logical_after"], indent=2))}</pre></details></details>')
+        proposals.append(f'<details><summary>{esc(rules)} · {"combined" if c["combined"] else "isolated"} · validation not run</summary><p>Performance unknown. Compare exact results and BLANK behavior before interpreting timings.</p><h4>Before</h4><pre>{esc(c["before"])}</pre><h4>Candidate</h4><pre>{esc(c["after"])}</pre>{dags}<details><summary>Rewrite steps and guards</summary><pre>{esc(json.dumps(c["steps"], indent=2))}</pre><pre>{esc(json.dumps({r: RULES[r] for r in {s["rule"] for s in c["steps"]}}, indent=2))}</pre></details><details><summary>Logical plan after</summary><pre>{esc(json.dumps(c["logical_after"], indent=2))}</pre></details></details>')
     return '<ul>'+diagnostics+'</ul>'+(''.join(proposals) or '<p>No supported rewrite candidate.</p>') + '<details><summary>Partial logical plan before</summary><pre>'+esc(json.dumps(measure['logical_before'], indent=2))+'</pre></details>'

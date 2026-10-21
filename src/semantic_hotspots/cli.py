@@ -59,6 +59,16 @@ def main(argv: list[str] | None = None) -> int:
     chain.add_argument('--format', choices=['json', 'text', 'dot'], default='json')
     chain.add_argument('-o', '--output', type=Path)
     chain.add_argument('--max-nodes', type=_positive, default=200, help='Text preview limit; JSON/DOT remain complete')
+    compare = commands.add_parser('compare-dags', help='Spell out original and proposed computation DAGs as HTML, JSON and DOT')
+    compare.add_argument('model', type=Path)
+    compare.add_argument('measure')
+    compare.add_argument('--table')
+    proposed = compare.add_mutually_exclusive_group(required=True)
+    proposed.add_argument('--expression-file', type=Path, help='DAX for a root-expression proposal')
+    proposed.add_argument('--candidate-model', type=Path, help='Separate proposed model, including any new summary tables')
+    compare.add_argument('--candidate-measure')
+    compare.add_argument('--candidate-table')
+    compare.add_argument('-o', '--output', type=Path, default=Path('dag-comparison'))
     mock = commands.add_parser('simulate', help='Generate seeded mock CSVs, an isolated Import BIM, workloads and HTML; does not execute DAX')
     mock.add_argument('model', type=Path)
     mock.add_argument('-o', '--output', type=Path, default=Path('synthetic-lab'))
@@ -239,6 +249,15 @@ def main(argv: list[str] | None = None) -> int:
             incomplete = any(not case['rows'] for case in result.cases) or any('expected ' in d or 'failed or timed out' in d for d in result.diagnostics)
             return 1 if failed or incomplete else 0
         model = load_model(args.model)
+        if args.command == 'compare-dags':
+            from .comparison import compare_measure_dags, write_dag_comparison
+            result = compare_measure_dags(model, args.measure, table=args.table,
+                proposed_expression=args.expression_file.read_text(encoding='utf-8-sig') if args.expression_file else None,
+                proposed_source=args.candidate_model, proposed_measure=args.candidate_measure,
+                proposed_table=args.candidate_table)
+            files = write_dag_comparison(result, args.output)
+            print(f'Original/proposed DAGs: {files["html"].resolve()}\nComplete JSON and DOT graphs retained. Validation not run; performance unknown.')
+            return 0
         if args.command == 'analyze':
             if args.capacity_logs and not args.semantic_logs:
                 raise ModelError('--capacity-logs requires --semantic-logs for query attribution')

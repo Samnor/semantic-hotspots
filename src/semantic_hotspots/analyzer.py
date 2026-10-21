@@ -18,7 +18,7 @@ from .parser import load_model, parse_model
 from .profile import RuntimeProfile
 from .rules import inspect_expression, relationship_findings
 
-VERSION = '0.8.0'
+VERSION = '0.9.0'
 SCORE_DESCRIPTION = (
     'Ordinal review priority, not elapsed time, engine work, row scans or CU. '
     'Each nonempty expression starts at 1 point; named rules add their documented points. '
@@ -71,6 +71,8 @@ class Analysis:
             index[m.id] = 'chains/' + filename
         (root / 'chain-index.json').write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         if self.rewrite_plan:
+            from .comparison import write_candidate_dags
+            write_candidate_dags(self.rewrite_plan.candidates, root/'dag-comparisons')
             (root / 'rewrite-plan.json').write_text(json.dumps(self.rewrite_plan.to_dict(), ensure_ascii=False, indent=2, allow_nan=False) + '\n', encoding='utf-8')
         self.to_json(root / 'analysis.json')
         (root / 'report.html').write_text(render_html(self, index), encoding='utf-8')
