@@ -1,5 +1,5 @@
 """Real Power BI checks for independent fictional daily-grain business rules."""
-import argparse,json,math,traceback,statistics,hashlib,sys
+import argparse,json,math,traceback,statistics,hashlib,sys,html
 from pathlib import Path
 from semantic_hotspots import query_to_csv
 from semantic_hotspots.showcase import _rows
@@ -40,6 +40,21 @@ def filters(context):
         output.append("TREATAS({"+','.join('DATE('+day.replace('-',',')+')' for day in dates)+"},'Calendar'[Day])" if dates else "FILTER(ALL('Calendar'[Day]),FALSE())")
     return output
 save()
+def write_report(results,out):
+    comparisons=sum(c['rows'] for c in results['checks'])
+    lines=[]
+    for item in results['benchmarks']:
+        times=item['warm_client_elapsed'];original=times['original']['median_ms'];candidate=times['candidate']['median_ms']
+        delta=(candidate/original-1)*100 if original else 0
+        assessment='Slower in this run; do not choose on structural counts' if delta>=0 else 'Lower warm client median in this run'
+        lines.append('<tr><td>'+html.escape(item['measure'])+'</td><td>'+format(original,'.2f')+'</td><td>'+format(candidate,'.2f')+'</td><td>'+format(delta,'+.1f')+'%</td><td>'+assessment+'</td></tr>')
+    report=('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<title>Production lab engine checks</title><style>body{font:16px/1.6 system-ui;margin:40px auto;max-width:1100px;padding:20px}td,th{text-align:left;padding:10px;border-bottom:1px solid #ddd}table{border-collapse:collapse}pre{white-space:pre-wrap}</style>'
+        '<h1>Fictional production lab: engine checks passed</h1><p>'+str(comparisons)+' finite original/candidate comparisons passed exact equality and explicit BLANK checks. Matrix cells and selected contexts matched an independent source-row arithmetic oracle; the independent Python floating-point comparison uses a small tolerance.</p>'
+        +('<h2>Warm client timings</h2><p>Seven measured samples per path, first priming iteration excluded. Order alternates between measures, not between individual samples. These include client overhead and are not server FE/SE traces or a production speedup prediction.</p><table><tr><th>Measure</th><th>Original ms</th><th>Candidate ms</th><th>Change</th><th>Observation</th></tr>'+''.join(lines)+'</table>' if lines else '<p>Benchmarking was not requested.</p>')
+        +'<details><summary>Cases, scope and raw samples</summary><pre>'+html.escape(json.dumps(results,indent=2))+'</pre></details><p>Read <a href="results.json">results.json</a> and the adjacent DAX/CSV files for raw evidence. Fewer static operators do not establish lower engine cost. Original source definitions were not edited.</p>')
+    (out/'report.html').write_text(report,encoding='utf-8')
+
 try:
     results.update(rows=manifest['row_counts'])
     counts=query('EVALUATE ROW("Actual",COUNTROWS(\'Production Daily\'),"Plan",COUNTROWS(\'Plan Daily\'))','row-count')[0]
@@ -104,6 +119,7 @@ try:
         results['benchmarks'].append({'measure':case['name'],'warm_client_elapsed':timing,'scope':'Seven warm client samples; excluded warm-up. No server traces or production speedup claim.'});save()
     require(hashlib.sha256((project/'Showcase.SemanticModel/model.bim').read_bytes()).hexdigest()==fingerprint)
     results['status']='passed';save()
+    write_report(results,out)
 except Exception:
     results['status']='failed';results['error']=traceback.format_exc();save();raise
 print(json.dumps({'status':results['status'],'checks':len(results['checks']),'rows':sum(c['rows'] for c in results['checks']),'benchmarks':results['benchmarks']}))
