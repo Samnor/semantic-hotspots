@@ -13,6 +13,33 @@ class CycleError(ModelError):
     pass
 
 
+def dependency_issues(model, syntax, wanted, *, cyclic=False, expressions=None):
+    """Specific blockers, independent of logical-parser/rewrite coverage."""
+    issues = []
+    if cyclic:
+        issues.append({'code':'cycle', 'message':'A dependency cycle was detected in the selected computation chain.'})
+    for identity in sorted(wanted):
+        entity = model.entities[identity]
+        text = (expressions or {}).get(identity,entity.expression)
+        if entity.kind == 'measure' and not text:
+            issues.append({'code':'missing_definition', 'owner_id':identity,
+                           'message':'Missing measure definition: '+entity.qualified_name+'.'})
+        info = syntax.get(identity)
+        if not info:continue
+        for ref in info.unresolved:
+            offset = ref.get('offset',0)
+            line = (text or '').count('\n',0,offset)+1
+            name = (str(ref['table']) if ref.get('table') else '')+'['+ref['name']+']'
+            issues.append({'code':'unresolved_reference', 'owner_id':identity, 'offset':offset, 'line':line,
+                           'message':entity.qualified_name+': '+name+' at line '+str(line)+', offset '+str(offset)+': '+ref['reason']+'.'})
+        for reason in info.reference_blockers:
+            code = 'syntax_scan' if any(s in reason for s in ['Unmatched','Unterminated']) else 'reference_scope'
+            label = 'DAX syntax scan failed' if code=='syntax_scan' else 'Reference scope is not established'
+            issues.append({'code':code, 'owner_id':identity,
+                           'message':label+' for '+entity.qualified_name+': '+reason})
+    return issues
+
+
 class DependencyGraph:
     def __init__(self, model: Model, *, progress=None):
         self.model = model

@@ -90,13 +90,17 @@ def _create_from_review(model, review, *, progress=None):
     if any(e.kind=='format_string' and e.metadata.get('for_measure')==owner.id for e in model.entities.values()):
         diagnostics.append('The original dynamic format expression is not copied; review formatting separately.')
     complete=comparison['original']['dependency_complete'] and comparison['proposed']['dependency_complete']
-    if not complete:diagnostics.append('Validation queries withheld because the original or new dependency chain is incomplete or cyclic.')
+    blockers=comparison['original'].get('dependency_issues',[])
+    if not complete:
+        for issue in blockers:
+            if issue['message'] not in diagnostics:diagnostics.append(issue['message'])
+        diagnostics.append('Validation queries withheld because reference binding, definitions, or dependency order are not fully established. See the specific blockers above.')
     explanation = ('Created a new measure with '+str(len(chosen['steps']))+(' guarded simplification' if len(chosen['steps'])==1 else ' guarded simplifications')+'. Validate its results and performance before use.' if chosen else 'Created an unchanged copy. No supported guarded rewrite matched; no performance improvement is claimed.')
     reason_kind = ('rewritten' if chosen else 'incomplete_dependencies' if not complete else
                    'unsupported_syntax_or_semantics' if not comparison['original']['logical_subset_validated'] else
                    'guard_blocked' if any(not message.startswith('No guarded rule matched') for message in d['diagnostics']) else 'no_matching_rule')
     if reason_kind=='incomplete_dependencies':
-        explanation='Created an unchanged copy. Automatic rewriting was blocked by incomplete, ambiguous, or cyclic dependencies. See the reasons below; no performance improvement is claimed.'
+        explanation='Created an unchanged copy. Dependency analysis could not establish every reference, definition, or dependency order. See the specific blockers below; no performance improvement is claimed.'
     elif reason_kind=='unsupported_syntax_or_semantics':
         explanation='Created an unchanged copy. The formula uses syntax or operations outside automatic rewrite coverage. See the reasons below; no performance improvement is claimed.'
     elif reason_kind=='guard_blocked':
@@ -112,7 +116,7 @@ def _create_from_review(model, review, *, progress=None):
         'selection_basis':'Bounded combined guarded rewrite, otherwise an isolated guarded rewrite; no timing-based selection.',
         'explanation':explanation,'reason_kind':reason_kind,
         'steps':copy.deepcopy(chosen['steps']) if chosen else [],'visual_contexts':contexts,
-        'dag_comparison':comparison,'diagnostics':diagnostics,'validation_available':complete,
+        'dag_comparison':comparison,'diagnostics':diagnostics,'dependency_issues':blockers,'validation_available':complete,
         'validation_status':'not_run','performance_status':'unknown'})
 
 

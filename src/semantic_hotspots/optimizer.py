@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .dax import Resolver, tokenize
-from .graph import DependencyGraph
+from .graph import DependencyGraph, dependency_issues
 from .model import Model, ModelError, object_id
 from .parser import load_model, parse_model
 
@@ -180,7 +180,9 @@ class _Parser:
         elif token.kind == 'BRACKET':
             target, _ = self.resolver.resolve(token.value, owner=self.owner)
             if not target or self.model.entities[target].kind != 'measure':
-                raise ModelError('Unqualified column scope is outside the logical subset')
+                line = self.text.count('\n',0,token.start)+1
+                raise ModelError('Cannot bind ['+token.value+'] at line '+str(line)+', offset '+str(token.start)+
+                                 ' to a supported measure or row-column scope. Inspect this reference in the original DAX; automatic rewriting is withheld.')
             node = LogicalNode('measure', 'scalar', token.start, token.end, target=target)
         else:
             raise ModelError('Syntax outside the supported logical subset')
@@ -384,13 +386,18 @@ def plan_rewrites(source, *, graph=None, ranked_ids=None, progress=None, measure
             diagnostics.append('Measure scalar result type is not established in the logical subset.')
         if any(e.kind == 'format_string' and e.metadata.get('for_measure') == measure.id for e in model.entities.values()):
             diagnostics.append('Dynamic format expression requires additional alias-context validation; rewrites withheld.')
-        if any(n in graph.syntax and set(graph.syntax[n].functions).intersection({'NOW', 'TODAY', 'RAND', 'RANDBETWEEN'}) for n in chain):
-            diagnostics.append('Time-dependent or random dependency requires controlled evaluation; rewrites withheld.')
+        for n in chain:
+            info = graph.syntax.get(n)
+            for call in info.calls if info else []:
+                if call.name in {'NOW','TODAY','RAND','RANDBETWEEN'}:
+                    entity = model.entities[n]
+                    line = entity.expression.count('\n',0,call.start)+1
+                    diagnostics.append('Controlled evaluation required for '+call.name+'() in '+entity.qualified_name+
+                                       ' at line '+str(line)+'. Automatic rewriting is withheld until date/time or random evaluation can be controlled.')
         if dynamic:
             diagnostics.append('Calculation groups or model functions are present; query-scoped rewrite validation is withheld.')
-        if measure.id in graph.blocked or any((model.entities[n].kind == 'measure' and not model.entities[n].expression)
-                                             or (n in graph.syntax and (graph.syntax[n].unresolved or graph.syntax[n].reference_blockers)) for n in chain):
-            diagnostics.append('Static dependency chain is incomplete or cyclic; rewrites withheld.')
+        issues = dependency_issues(model,graph.syntax,chain,cyclic=measure.id in graph.blocked)
+        diagnostics.extend(issue['message'] for issue in issues)
         candidates = []
         def candidate(after, steps, combined=False):
             if after == before or any(c['after'] == after for c in candidates):

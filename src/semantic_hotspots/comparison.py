@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from .dax import Resolver
-from .graph import DependencyGraph
+from .graph import DependencyGraph, dependency_issues
 from .model import Model, ModelError
 from .parser import load_model, parse_model
 
@@ -175,6 +175,7 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
             'operator_complete': not any(n.get('operation') == 'opaque' for n in nodes.values()),
             'logical_subset_validated': not diagnostics,
             'unresolved': unresolved, 'reference_diagnostics': reference_diagnostics, 'reference_blockers': reference_blockers, 'missing_definitions': missing,
+            'dependency_issues': dependency_issues(model,infos,wanted,cyclic=ordered is None,expressions=overrides),
             'diagnostics': diagnostics, 'phase_diagnostics': phase_diagnostics,
             'query_time_node_ids': sorted(query), 'refresh_time_node_ids': sorted(refresh),
             'materialization_node_ids': materializations,
@@ -306,12 +307,12 @@ def render_dag_comparison(comparison):
         refresh=('<details><summary>Refresh-time lineage and materialization</summary><p>Stored definitions are built on refresh. These dependencies remain part of the full lineage; they are not assumed to run per query.</p><div class="dag-diagram">'+_svg(g,g['refresh_time_node_ids'],highlights)+'</div></details>') if g['materialization_node_ids'] else ''
         notes=[]
         if g.get('phase_diagnostics'):notes.append('Some calculated definitions have storage-dependent timing. Their full possible query paths remain visible; they are excluded from confirmed query/refresh operator counts.')
-        if not g['dependency_complete']:notes.append('The dependency chain is incomplete or cyclic; inspect unresolved references and missing definitions below.')
+        if not g['dependency_complete']:notes.extend(issue['message'] for issue in g.get('dependency_issues',[]))
         if not g['operator_complete']:notes.append('Some DAX is opaque; its exact definition and resolved references are retained without invented operator topology.')
         elif g['diagnostics']:notes.append('Some parsed calls lack established type/context semantics. They are labelled “syntax only”; diagnostics are retained below.')
         if g['dependency_complete'] and g['reference_diagnostics']:notes.append('Reference notes below are informational; no missing or ambiguous dependencies were found.')
         issues=('<p class="dag-note">'+esc(' '.join(notes))+'</p>') if notes else ''
-        sides.append(f'<section class="dag-side"><h3>{title}</h3><p>{esc(root["label"])}</p><pre>{esc(root["expression"] or "Definition missing")}</pre>{issues}<h4>Query-time dependency view</h4><div class="dag-diagram">{_svg(g,g["query_time_node_ids"],highlights)}</div>{refresh}<details><summary>Every node, definition and edge · {len(g["nodes"])} nodes / {len(g["edges"])} edges</summary>{definitions}<ol class="dag-edges">{edge_list}</ol><pre>{esc(json.dumps({k:g.get(k,{}) for k in ["unresolved","reference_diagnostics","reference_blockers","missing_definitions","diagnostics","phase_diagnostics","evaluation_order"]},ensure_ascii=False,indent=2))}</pre></details></section>')
+        sides.append(f'<section class="dag-side"><h3>{title}</h3><p>{esc(root["label"])}</p><pre>{esc(root["expression"] or "Definition missing")}</pre>{issues}<h4>Query-time dependency view</h4><div class="dag-diagram">{_svg(g,g["query_time_node_ids"],highlights)}</div>{refresh}<details><summary>Every node, definition and edge · {len(g["nodes"])} nodes / {len(g["edges"])} edges</summary>{definitions}<ol class="dag-edges">{edge_list}</ol><pre>{esc(json.dumps({k:g.get(k,{}) for k in ["unresolved","reference_diagnostics","reference_blockers","dependency_issues","missing_definitions","diagnostics","phase_diagnostics","evaluation_order"]},ensure_ascii=False,indent=2))}</pre></details></section>')
     delta=comparison['difference']
     summary=comparison['summary']
     explanation=('<p>Upstream measure dependencies: '+str(summary['upstream_measures_original'])+' original → '+str(summary['upstream_measures_proposed'])+' proposed. Root DAX '+('changed.' if summary['root_expression_changed'] else 'is unchanged.')+' These are structural differences, not measured work or speedup.</p>')
@@ -341,6 +342,7 @@ def dag_to_text(graph):
     lines += ['', 'Unresolved: '+json.dumps(graph['unresolved'],ensure_ascii=False),
               'Reference diagnostics: '+json.dumps(graph['reference_diagnostics'],ensure_ascii=False),
               'Reference blockers: '+json.dumps(graph.get('reference_blockers',{}),ensure_ascii=False),
+              'Dependency issues: '+json.dumps(graph.get('dependency_issues',[]),ensure_ascii=False),
               'Phase diagnostics: '+json.dumps(graph.get('phase_diagnostics',{}),ensure_ascii=False),
               'Missing definitions: '+json.dumps(graph['missing_definitions'],ensure_ascii=False),
               'Diagnostics: '+json.dumps(graph['diagnostics'],ensure_ascii=False)]

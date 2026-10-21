@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Identify dependency blockers individually, separating scope uncertainty, unresolved references, missing definitions, syntax-scan failures and detected cycles.
+- Include the unqualified reference and source location in logical-binding failures, and identify the function, owning measure and source line for controlled-evaluation guards.
+- Retain all rewrite/validation guards while making unchanged-copy results and custom-proposal validation reasons specific.
+
 ## 0.14.0
 
 - Parse scoped VAR/RETURN bindings and shared variable references in computation DAGs without inlining or moving their definitions.

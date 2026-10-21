@@ -203,5 +203,5 @@ def write_measure_proposal(model, measure, expression, directory, *, graph=None,
         files['validation']=root/'validate-total.dax'
         files['validation'].write_text(_validation_query(owner.table,owner.name,expression,alias),encoding='utf-8')
         _write_visual_queries(root,owner.table,owner.name,expression,alias,landings)
-    files['validation_reason']=None if valid else 'Validation queries withheld: the proposed dependency chain is incomplete or cyclic.'
+    files['validation_reason']=None if valid else 'Validation queries withheld: '+' '.join(issue['message'] for issue in comparison['proposed'].get('dependency_issues',[]))
     return files
