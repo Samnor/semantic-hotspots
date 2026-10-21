@@ -63,8 +63,8 @@ class StudioTests(unittest.TestCase):
         self.assertTrue(eligible);self.assertTrue(blocked)
         with self.assertRaises(ModelError):studio.dispatch('generate',{'matrix':blocked[0]['id']})
         owner=studio.model.measure('Revenue').id
-        studio.dispatch('measure',{'measure':owner,'landing_matrix':eligible[0]['id']})
-        studio.dispatch('generate',{'measure':owner,'matrix':eligible[0]['id'],'fact_rows':50,'dimension_rows':4})
+        studio.dispatch('measure',{'measure':owner,'landing_matrix':'monthly-margin'})
+        studio.dispatch('generate',{'measure':owner,'matrix':'monthly-margin','fact_rows':50,'dimension_rows':4})
         project=studio.snapshot()['project']
         self.assertTrue(Path(project['directory'],'Showcase.pbip').is_file())
         self.assertEqual(project['manifest']['engine_validation'],'not_run')
@@ -207,12 +207,12 @@ class StudioTests(unittest.TestCase):
         owner=studio.model.measure('Revenue iterator').id
         studio.dispatch('measure',{'measure':owner})
         self.assertIsNone(studio.snapshot()['measure_review']['landing_visual'])
-        with self.assertRaises(ModelError):studio.dispatch('generate',{'matrix':'monthly-margin'})
-        studio.dispatch('measure',{'measure':owner,'landing_matrix':'monthly-margin'})
+        with self.assertRaises(ModelError):studio.dispatch('generate',{'matrix':'iterator-review'})
+        studio.dispatch('measure',{'measure':owner,'landing_matrix':'iterator-review'})
         review=studio.snapshot()['measure_review']
         self.assertEqual(review['landing_visual']['spec']['values'],[['Sales','Revenue iterator']])
         self.assertTrue(review['candidates'][0]['landing_queries'])
-        studio.dispatch('generate',{'measure':owner,'matrix':'monthly-margin','fact_rows':20})
+        studio.dispatch('generate',{'measure':owner,'matrix':'iterator-review','fact_rows':20})
         self.assertEqual(len(studio.snapshot()['project']['manifest']['changes']),1)
         studio.dispatch('measure',{'measure':owner,'landing_matrix':None})
         self.assertIsNone(studio.snapshot()['project']);self.assertIsNone(studio.snapshot()['result'])
@@ -227,6 +227,43 @@ class StudioTests(unittest.TestCase):
         self.assertTrue(studio.snapshot()['matrix_warning']);self.assertFalse(studio.specs)
         studio.dispatch('measure',{'measure':studio.model.measure('Iterator').id})
         self.assertTrue(studio.snapshot()['measure_review']['candidates'])
+
+    def test_landing_choices_use_bound_value_slots_and_reject_unrelated_visuals(self):
+        from semantic_hotspots import MatrixSpec
+        studio=self.server.studio;studio.dispatch('demo',{})
+        owner=studio.model.measure('Revenue iterator').id
+        specs={s.id:s.to_dict() for s in studio.specs}
+        # Case-insensitive binding, plus a second visual of the same selected measure.
+        first=specs['iterator-review'];first['values']=[['sales','REVENUE ITERATOR']]
+        second=dict(first,id='another-iterator',page_name='Overview')
+        # A helper dependency or visual filter does not mean the measure is displayed.
+        unrelated=specs['monthly-margin'];unrelated['filter_measures']=[['Sales','Revenue iterator']]
+        unknown=dict(first,id='unknown-binding',values=[['Missing','Revenue iterator']])
+        studio.specs=[MatrixSpec.from_dict(s) for s in [first,second,unrelated,unknown]]
+        studio.analyze_current()
+        choices=[c for c in studio.snapshot()['matrices'] if owner in c['measure_ids']]
+        self.assertEqual({c['id'] for c in choices},{'iterator-review','another-iterator'})
+        self.assertTrue(any('Overview' in c['visual_label'] for c in choices))
+        studio.dispatch('measure',{'measure':owner})
+        for action,data in [('measure',{'landing_matrix':'monthly-margin'}),
+                            ('matrix',{'id':'monthly-margin','reviewed':True})]:
+            with self.subTest(action=action),self.assertRaisesRegex(ModelError,'directly displays'):
+                studio.dispatch(action,dict(data,measure=owner))
+        for choice in choices:
+            studio.dispatch('measure',{'measure':owner,'landing_matrix':choice['id']})
+            self.assertEqual(studio.snapshot()['measure_review']['landing_visual']['matrix_id'],choice['id'])
+        studio.dispatch('measure',{'measure':owner})
+        self.assertIsNone(studio.snapshot()['measure_review']['landing_visual'])
+
+    def test_duplicate_visual_titles_are_disambiguated_without_title_based_binding(self):
+        from semantic_hotspots import MatrixSpec
+        studio=self.server.studio;studio.dispatch('demo',{})
+        first=studio.specs[0].to_dict();second=dict(first,id='same-page/second-visual')
+        studio.specs=[MatrixSpec.from_dict(first),MatrixSpec.from_dict(second)]
+        studio.analyze_current()
+        choices=studio.snapshot()['matrices']
+        self.assertEqual(len({c['visual_label'] for c in choices}),2)
+        self.assertTrue(all(c['id'] in c['visual_label'] for c in choices))
 
 
 if __name__=='__main__':unittest.main()
