@@ -19,6 +19,10 @@ def _model(source):
     return source if isinstance(source,Model) else parse_model(source) if isinstance(source,dict) else load_model(source)
 
 
+def _defined(entity):
+    return bool(entity and entity.expression and entity.expression.strip())
+
+
 def _signature(expression):
     return [(t.kind,t.value) for t in tokenize(expression or '')]
 
@@ -46,17 +50,17 @@ def recover_helpers(source, supplement, measure, *, table=None, require_root_mat
     """
     original=_model(source);extra=_model(supplement);owner=original.measure(measure,table)
     anchor=extra.entities.get(owner.id)
-    if require_root_match and (not anchor or not anchor.expression):
+    if require_root_match and not _defined(anchor):
         raise ModelError('The loaded model does not contain the selected root definition')
-    if anchor and anchor.expression and _signature(anchor.expression)!=_signature(owner.expression):
+    if _defined(anchor) and _signature(anchor.expression)!=_signature(owner.expression):
         raise ModelError('Selected root definition differs; choose the matching model/export')
     # Validate overlapping definitions before using the supplement. A same-name
     # helper from a different revision must not silently change the source.
     for identity,entity in sorted(extra.entities.items(),key=lambda pair:pair[1].kind!='table'):
         old=original.entities.get(identity)
-        if old and old.expression and entity.expression and _signature(old.expression)!=_signature(entity.expression):
+        if _defined(old) and _defined(entity) and _signature(old.expression)!=_signature(entity.expression):
             raise ModelError('Conflicting existing definition: '+old.qualified_name)
-        if old and old.kind in {'column','table'} and not old.expression and entity.expression:
+        if old and old.kind in {'column','table'} and not _defined(old) and _defined(entity):
             raise ModelError('The supplement changes a known physical object into a calculated object: '+old.qualified_name)
     combined=copy.deepcopy(original)
     for identity,entity in sorted(extra.entities.items(),key=lambda pair:pair[1].kind!='table'):
@@ -67,7 +71,7 @@ def recover_helpers(source, supplement, measure, *, table=None, require_root_mat
                 combined.entities[target.id]=copy.deepcopy(entity)
         else:
             current=combined.entities[identity]
-            if current.kind=='measure' and not current.expression and entity.expression:
+            if current.kind=='measure' and not _defined(current) and _defined(entity):
                 current.expression=entity.expression;current.source=entity.source
                 current.metadata=dict(current.metadata,definition_provenance=provenance)
             if current.kind=='column':
@@ -92,8 +96,8 @@ def recover_helpers(source, supplement, measure, *, table=None, require_root_mat
             else:
                 target=result.add_table(entity.table,entity.source)
                 result.entities[target.id]=copy.deepcopy(entity)
-            if entity.kind=='measure' and entity.expression:recovered.append(identity)
-        elif old.kind=='measure' and not old.expression and entity.expression:
+            if entity.kind=='measure' and _defined(entity):recovered.append(identity)
+        elif old.kind=='measure' and not _defined(old) and _defined(entity):
             old.expression=entity.expression;old.source=entity.source
             old.metadata=dict(old.metadata,definition_provenance=provenance)
             recovered.append(identity)
@@ -102,6 +106,8 @@ def recover_helpers(source, supplement, measure, *, table=None, require_root_mat
     # Context-sensitive models cannot be silently presented as ordinary measure
     # catalogs. Retain explicit markers even if they are not direct references.
     for entity in extra.entities.values():
+        if entity.kind=='format_string' and entity.metadata.get('for_measure') not in result.entities:
+            continue
         if entity.kind in {'function','calculation_item','format_string'} and entity.id not in result.entities:
             result.add(copy.deepcopy(entity))
     for warning in extra.warnings:

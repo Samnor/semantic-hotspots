@@ -21,7 +21,7 @@ def dependency_issues(model, syntax, wanted, *, cyclic=False, expressions=None):
     for identity in sorted(wanted):
         entity = model.entities[identity]
         text = (expressions or {}).get(identity,entity.expression)
-        if entity.kind == 'measure' and not text:
+        if entity.kind == 'measure' and not (text and text.strip()):
             issues.append({'code':'missing_definition', 'owner_id':identity,
                            'message':'Missing measure definition: '+entity.qualified_name+'.'})
         info = syntax.get(identity)

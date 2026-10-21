@@ -82,6 +82,15 @@ class HelperRecoveryTests(unittest.TestCase):
             entity.expression='TODAY()'
             with self.assertRaisesRegex(ModelError,'physical object'):recover_helpers(original,extra,'Total')
 
+    def test_unrelated_format_markers_do_not_leave_dangling_owners(self):
+        extra=parse_model(supplement())
+        unrelated=extra.measure('Unrelated')
+        extra.add(Entity('format_string','Sales','Unrelated (format string)','"0"',metadata={'for_measure':unrelated.id}))
+        recovered=recover_helpers(partial(),extra,'Total')
+        self.assertFalse(recovered.remaining)
+        self.assertNotIn(unrelated.id,recovered.model.entities)
+        self.assertFalse(any(e.kind=='format_string' for e in recovered.model.entities.values()))
+
     def test_desktop_read_only_info_views_require_matching_root_and_preserve_formats(self):
         original=parse_model(partial());root=original.measure('Total').expression
         rows={'TABLES':[{'Name':'Sales','Expression':'','CalculationGroupPrecedence':''}],
@@ -123,3 +132,12 @@ class HelperRecoveryTests(unittest.TestCase):
             self.assertEqual(review['recovery']['recovered_count'],2)
             self.assertEqual(path.read_bytes(),before)
             self.assertIsNotNone(review['candidates'][0]['validation'])
+
+    def test_whitespace_helpers_are_missing_and_only_real_definitions_fill_them(self):
+        data=partial();data['model']['tables'][0]['measures'][-1]['expression']='  \n '
+        result=create_measure(data,'Total')
+        self.assertFalse(result.data['validation_available'])
+        self.assertEqual({i['code'] for i in result.data['dependency_issues']},{'missing_definition'})
+        recovered=recover_helpers(data,supplement(),'Total')
+        self.assertEqual({recovered.model.entities[i].name for i in recovered.recovered},{'Helper','Leaf'})
+        self.assertFalse(recovered.remaining)
