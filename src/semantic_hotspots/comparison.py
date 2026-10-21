@@ -110,6 +110,7 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
             continue
         represented = set()
         variable_ids = {}
+        extension_ids = {}
         def expand(item, path):
             if item.operation in {'column', 'measure'}:
                 represented.add(item.target)
@@ -118,6 +119,15 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
                 return expand(item.children[0], path + '.group')
             if item.operation == 'variable_reference':
                 return variable_ids[item.target]
+            if item.operation == 'extension_column':
+                identity = 'operation:' + n + ':' + path
+                nodes[identity] = {'id': identity, 'type': 'operation', 'operation': 'extension_column',
+                    'label': '['+item.value+']', 'owner': n, 'result_type': item.result_type,
+                    'source_span': [item.start,item.end], 'expression': text[item.start:item.end],
+                    'row_context': list(item.row_context), 'filter_context': list(item.filter_context),
+                    'supported': item.supported, 'definition_phase': phase}
+                edge(identity, extension_ids[item.target], 'extension_reference')
+                return identity
             identity = 'operation:' + n + ':' + path
             label = item.operation.upper()
             if item.operation == 'variable_definition':
@@ -133,10 +143,25 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
                                'result_type': item.result_type, 'row_context': list(item.row_context),
                                'filter_context': list(item.filter_context), 'definition_phase': phase,
                                'supported': item.supported, 'owner': n}
+            if item.result_type == 'table':
+                nodes[identity]['table_columns'] = item.table_columns
             if item.operation == 'scan':
                 represented.add(item.target)
                 edge(identity, item.target, 'reads_table')
             for i, child in enumerate(item.children):
+                if item.operation in {'ADDCOLUMNS', 'SELECTCOLUMNS'} and i >= 2 and i % 2 == 0:
+                    alias = item.children[i-1]
+                    key = 'extension:'+str(alias.start)
+                    definition = identity+':extension:'+str(i)
+                    extension_ids[key] = definition
+                    nodes[definition] = {'id': definition, 'type': 'operation', 'operation': 'extension_definition',
+                        'label': '['+alias.value+'] :=', 'owner': n, 'result_type': child.result_type,
+                        'expression': text[child.start:child.end], 'source_span': [child.start,child.end],
+                        'row_context': list(child.row_context), 'filter_context': list(child.filter_context),
+                        'definition_phase': phase, 'supported': child.supported}
+                    edge(definition, expand(child, path+'.'+str(i)), 'extension_expression')
+                    edge(identity, definition, 'added_column', argument=i+1)
+                    continue
                 kind = 'variable_binding' if item.operation == 'let' and i < len(item.children)-1 else 'return_value' if item.operation == 'let' else 'argument'
                 edge(identity, expand(child, path + '.' + str(i)), kind, argument=i+1)
             return identity

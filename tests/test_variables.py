@@ -63,15 +63,17 @@ class VariableTests(unittest.TestCase):
                      'VAR x = RAND() RETURN SUMX(Sales, Sales[Amount])']:
             with self.subTest(text=text):self.assertFalse(plan_rewrites(source(text)).candidates)
 
-    def test_table_variables_are_visible_but_still_outside_rewrite_coverage(self):
+    def test_table_variables_preserve_schema_without_inlining_the_binding(self):
         text='VAR rows = Sales RETURN SUMX(rows, Sales[Amount])'
         result=create_measure(source(text),'Total').data
         dag=result['dag_comparison']['original']
         self.assertEqual(result['outcome'],'unchanged_copy')
         self.assertTrue(dag['dependency_complete']);self.assertTrue(dag['operator_complete'])
-        self.assertFalse(dag['logical_subset_validated'])
-        self.assertIn('table VAR',' '.join(result['diagnostics']))
-        self.assertEqual(result['reason_kind'],'unsupported_syntax_or_semantics')
+        self.assertTrue(dag['logical_subset_validated'])
+        self.assertFalse(dag['reference_blockers'])
+        binding=next(n for n in dag['nodes'] if n.get('label')=='VAR rows')
+        self.assertEqual(set(binding['table_columns']),{'amount','category'})
+        self.assertEqual(result['expression'],text)
 
     def test_unsupported_calls_explain_coverage_above_unchanged_dags(self):
         text='VAR amount = MEDIAN(Sales[Amount]) RETURN amount'

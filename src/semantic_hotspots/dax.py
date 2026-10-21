@@ -234,15 +234,37 @@ class Resolver:
                 info.references.append(Reference(function.id, call.start, call.end, call.ancestors))
         if "SELECTEDMEASURE" in info.functions or "SELECTEDMEASURENAME" in info.functions:
             info.diagnostics.append("Calculation-group behavior depends on the selected measure; this graph cannot expand dynamic selected-measure dependencies.")
-        if variables or aliases:
+        scoped = bool(variables or aliases or info.virtual_columns or any(c.name in ITERATORS for c in info.calls))
+        if scoped:
             info.diagnostics.append("Variable/table-alias scopes are analyzed conservatively; graph edges are static possibilities, not evaluated calls.")
         info.reference_blockers = list(info.diagnostics)
-        if variables and not aliases:
-            # The scoped parser binds declarations and references without
-            # inlining. A coverage warning is not itself a missing dependency.
+        if scoped:
+            # Reconcile bracket references with lexical row scopes. A string
+            # alias elsewhere in the expression is not evidence of visibility.
             from .optimizer import logical_plan
-            tree, _ = logical_plan(text, self.model, owner)
+            tree, issues = logical_plan(text, self.model, owner)
             if tree.operation != 'opaque':
+                bound = {}
+                def visit(node):
+                    if node.operation in {'column', 'measure', 'extension_column'}:
+                        bracket = next((t for t in tokens if t.kind == 'BRACKET' and node.start <= t.start < node.end), None)
+                        if bracket:bound[bracket.start] = node
+                    for child in node.children:visit(child)
+                visit(tree)
+                offsets = set(bound)
+                info.references = [r for r in info.references if r.start not in offsets]
+                info.unresolved = [r for r in info.unresolved if r['offset'] not in offsets]
+                info.virtual_columns = []
+                for i, t in enumerate(tokens):
+                    node = bound.get(t.start)
+                    if node is None:continue
+                    if node.operation == 'extension_column':
+                        info.virtual_columns.append(t.value)
+                    else:
+                        info.references.append(Reference(node.target,t.start,t.end,contexts[i]))
+                info.references.sort(key=lambda r:(r.start,r.end,r.target))
                 info.reference_blockers.remove(info.diagnostics[-1])
-                info.diagnostics[-1] = 'VAR bindings were resolved lexically; references describe static possibilities, not evaluated calls.'
+                info.diagnostics[-1] = 'VAR bindings and row-column scopes were resolved lexically; references describe static possibilities, not evaluated calls.'
+            elif issues:
+                info.reference_blockers[-1] = issues[0]
         return info

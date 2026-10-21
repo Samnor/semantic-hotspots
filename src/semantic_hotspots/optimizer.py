@@ -31,6 +31,12 @@ RULES = {
                                  'Predicates use only same-table physical columns and compatible literals',
                                  'Only comparisons and Boolean conjunction/disjunction; no measures, calls, arithmetic, or context transition'],
                'source_url': 'https://learn.microsoft.com/en-us/dax/filter-function-dax'},
+    'OPT003': {'title': 'Remove a blank-only filter from a stored table SUMX',
+               'preconditions': ['The FILTER input is a lexically bound table variable',
+                                 'The predicate is exactly NOT ISBLANK of the column summed by SUMX',
+                                 'Both references bind to the same physical or extension column; no measure reevaluation',
+                                 'Only the SUMX input changes; the table binding and other consumers are retained'],
+               'source_url': 'https://learn.microsoft.com/en-us/dax/sumx-function-dax'},
 }
 
 
@@ -47,6 +53,9 @@ class LogicalNode:
     row_context: tuple[str, ...] = ()
     filter_context: tuple[str, ...] = ()
     supported: bool = True
+    # Output schema only: extensions have expression identities, never fabricated
+    # physical lineage. Row contexts carry these schemas separately from labels.
+    table_columns: dict[str, dict] = field(default_factory=dict)
 
     def to_dict(self):
         result = asdict(self)
@@ -172,18 +181,16 @@ class _Parser:
                 if not target:
                     raise ModelError('Unbound qualified reference')
                 entity = self.model.entities[target]
-                node = LogicalNode(entity.kind, _type(entity), token.start, column.end, target=target, table=entity.table)
+                node = LogicalNode(entity.kind, 'scalar' if entity.kind == 'measure' else _type(entity),
+                                   token.start, column.end, target=target, table=entity.table)
             elif table:
                 node = LogicalNode('scan', 'table', token.start, token.end, target=table.id, table=table.name)
             else:
                 raise ModelError('Variables and unbound names are outside the logical subset')
         elif token.kind == 'BRACKET':
-            target, _ = self.resolver.resolve(token.value, owner=self.owner)
-            if not target or self.model.entities[target].kind != 'measure':
-                line = self.text.count('\n',0,token.start)+1
-                raise ModelError('Cannot bind ['+token.value+'] at line '+str(line)+', offset '+str(token.start)+
-                                 ' to a supported measure or row-column scope. Inspect this reference in the original DAX; automatic rewriting is withheld.')
-            node = LogicalNode('measure', 'scalar', token.start, token.end, target=target)
+            # A bracket can denote a model measure or an iterator's row column.
+            # Decide only after the first table argument has been bound.
+            node = LogicalNode('unbound_reference', 'unknown', token.start, token.end, value=token.value)
         else:
             raise ModelError('Syntax outside the supported logical subset')
         while self.peek() and self.peek().kind == 'SYMBOL':
@@ -199,32 +206,46 @@ class _Parser:
             node = LogicalNode('binary', 'unknown', node.start, right.end, [node, right], value=op)
         return node
 
-    def bind(self, node, rows, filters, depth=0):
+    def bind(self, node, rows, filters, depth=0, schemas=()):
         if depth > 64:
             raise ModelError('Logical subset nesting exceeds 64 levels')
         node.row_context, node.filter_context = rows, filters
         for i, child in enumerate(node.children):
             child_rows, child_filters = rows, filters
-            if node.operation in {'FILTER', 'SUMX'} and i == 1:
-                child_rows = rows + ((node.children[0].table or 'unknown row scope'),)
+            child_schemas = schemas
+            if ((node.operation in {'FILTER', 'SUMX'} and i == 1)
+                    or (node.operation in {'ADDCOLUMNS', 'SELECTCOLUMNS'} and i >= 2 and i % 2 == 0)):
+                source = node.children[0]
+                child_rows = rows + ((source.table or 'table expression at '+str(source.start)),)
+                child_schemas += (source.table_columns if source.result_type == 'table' else None,)
             if node.operation == 'CALCULATE' and i == 0:
                 child_filters += ('CALCULATE: transition/modified filters',)
-            self.bind(child, child_rows, child_filters, depth+1)
+            self.bind(child, child_rows, child_filters, depth+1, child_schemas)
         c, op = node.children, node.operation
         node.supported = all(x.supported for x in c)
-        if op in {'scan', 'column', 'measure', 'literal'}:
+        if op == 'scan':
+            node.table_columns = {e.name.casefold(): self.column_schema(e) for e in self.model.entities.values()
+                                  if e.kind == 'column' and e.table == node.table}
+            return
+        if op == 'unbound_reference':
+            self.bind_reference(node, schemas)
+            return
+        if op in {'column', 'measure', 'literal'}:
             return
         if op == 'variable_reference':
             binding = self.variables[node.target]
             node.result_type, node.table, node.supported = binding.result_type, binding.table, binding.supported
+            node.table_columns = dict(binding.table_columns)
         elif op == 'variable_definition':
             node.result_type, node.table = c[0].result_type, c[0].table
-            # Table-variable lineage/context is displayed but not rewritten.
-            node.supported &= node.result_type not in {'table', 'unknown', 'filter_modifier'}
+            node.table_columns = dict(c[0].table_columns)
+            node.supported &= node.result_type not in {'unknown', 'filter_modifier'}
         elif op == 'let':
             node.result_type, node.table = c[-1].result_type, c[-1].table
+            node.table_columns = dict(c[-1].table_columns)
         elif op == 'group':
             node.result_type, node.table = c[0].result_type, c[0].table
+            node.table_columns = dict(c[0].table_columns)
         elif op == 'unary':
             node.result_type = c[0].result_type
             node.supported &= node.result_type in _NUMERIC | {'number'}
@@ -235,12 +256,24 @@ class _Parser:
             node.result_type = 'boolean'
         elif op == 'BLANK' and not c:
             node.result_type = 'blank'
+        elif op == 'TODAY' and not c:
+            # Recognize the type, but retain the separate controlled-evaluation
+            # guard in plan_rewrites. Binding is not authorization to rewrite.
+            node.result_type = 'datetime'
+        elif op == 'DATE' and len(c) == 3 and all(x.result_type in _NUMERIC | {'number'} for x in c):
+            node.result_type = 'datetime'
+        elif op == 'YEAR' and len(c) == 1 and c[0].result_type in {'datetime', 'scalar', 'blank'}:
+            node.result_type = 'int64'
         elif op == 'ISBLANK' and len(c) == 1 and c[0].result_type not in {'table', 'unknown'}:
             node.result_type = 'boolean'
         elif op == 'NOT' and len(c) == 1 and c[0].result_type == 'boolean':
             node.result_type = 'boolean'
         elif op == 'IF' and len(c) in {2, 3} and c[0].result_type == 'boolean' and all(x.result_type not in {'table', 'unknown'} for x in c[1:]):
             types = {x.result_type for x in c[1:]} - {'blank'}
+            node.result_type = next(iter(types)) if len(types) == 1 else 'scalar'
+        elif op == 'SWITCH' and len(c) >= 3 and all(x.result_type not in {'table', 'unknown', 'filter_modifier'} for x in c):
+            results = c[2::2] + (c[-1:] if len(c) % 2 == 0 else [])
+            types = {x.result_type for x in results} - {'blank'}
             node.result_type = next(iter(types)) if len(types) == 1 else 'scalar'
         elif op == 'DIVIDE' and len(c) in {2, 3} and all(x.result_type in _NUMERIC | {'number', 'scalar', 'blank'} for x in c):
             alternate = _plain(c[2]) if len(c) == 3 else None
@@ -250,10 +283,34 @@ class _Parser:
             node.result_type = 'filter_modifier'
         elif op == 'SUM' and len(c) == 1 and _plain(c[0]).operation == 'column' and c[0].result_type in _NUMERIC:
             node.result_type = c[0].result_type
-        elif op == 'SUMX' and len(c) == 2 and c[0].result_type == 'table' and c[1].result_type in _NUMERIC | {'number', 'scalar'}:
+        elif op in {'MAX', 'MIN'} and len(c) == 1 and _plain(c[0]).operation == 'column':
+            node.result_type = c[0].result_type if c[0].result_type != 'unknown' else 'scalar'
+        elif op == 'VALUES' and len(c) == 1 and _plain(c[0]).operation in {'scan', 'column'}:
+            base = _plain(c[0])
+            node.result_type, node.table = 'table', base.table
+            node.table_columns = (dict(base.table_columns) if base.operation == 'scan'
+                                  else {self.model.entities[base.target].name.casefold(): self.column_schema(self.model.entities[base.target])})
+        elif op in {'ADDCOLUMNS', 'SELECTCOLUMNS'} and len(c) >= 3 and len(c) % 2 == 1 and c[0].result_type == 'table':
+            node.result_type, node.table = 'table', c[0].table
+            node.table_columns = dict(c[0].table_columns) if op == 'ADDCOLUMNS' else {}
+            for i in range(1, len(c), 2):
+                alias, value = c[i:i+2]
+                if alias.operation != 'literal' or alias.result_type != 'string' or not alias.value:
+                    raise ModelError(op+' requires a literal nonempty column name at offset '+str(alias.start))
+                key = alias.value.casefold()
+                if key in node.table_columns:
+                    raise ModelError('Duplicate table column ['+alias.value+'] at offset '+str(alias.start))
+                node.table_columns[key] = {'name': alias.value, 'kind': 'extension_column',
+                    'target': 'extension:'+str(alias.start), 'result_type': value.result_type,
+                    'expression_span': [value.start, value.end]}
+                node.supported &= value.result_type not in {'table', 'unknown', 'filter_modifier'}
+        elif op == 'SUMX' and len(c) == 2 and c[0].result_type == 'table' and c[1].result_type in _NUMERIC | {'number', 'scalar', 'blank'}:
             node.result_type = c[1].result_type
         elif op == 'FILTER' and len(c) == 2 and c[0].result_type == 'table' and c[1].result_type == 'boolean':
             node.result_type, node.table = 'table', c[0].table
+            node.table_columns = dict(c[0].table_columns)
+        elif op == 'ISEMPTY' and len(c) == 1 and c[0].result_type == 'table':
+            node.result_type = 'boolean'
         elif op == 'COUNTROWS' and len(c) == 1 and c[0].result_type == 'table':
             node.result_type = 'int64'
         elif op == 'CALCULATE' and c and c[0].result_type not in {'table', 'unknown', 'filter_modifier'} and all(x.result_type in {'table', 'boolean', 'filter_modifier'} for x in c[1:]):
@@ -262,6 +319,38 @@ class _Parser:
             node.supported = False
         if op.casefold() in self.resolver.functions:
             node.supported = False
+
+    @staticmethod
+    def column_schema(entity):
+        return {'name': entity.name, 'kind': 'column', 'target': entity.id, 'result_type': _type(entity)}
+
+    def bind_reference(self, node, schemas):
+        key = node.value.casefold()
+        candidates = self.resolver.bare.get(key, [])
+        row_column = None
+        for schema in reversed(schemas):
+            if schema is None:
+                self.reference_error(node, 'unknown input table schema')
+            if key in schema:
+                row_column = schema[key]
+                break
+        if row_column:
+            if any(e.kind == 'measure' for e in candidates):
+                self.reference_error(node, 'ambiguous row-column/model-measure name scope')
+            node.operation = row_column['kind']
+            node.target, node.result_type = row_column['target'], row_column['result_type']
+            node.table = self.model.entities[node.target].table if node.operation == 'column' else None
+            return
+        target, _ = self.resolver.resolve(node.value, owner=self.owner)
+        if target and self.model.entities[target].kind == 'measure':
+            node.operation, node.target, node.result_type = 'measure', target, 'scalar'
+            return
+        self.reference_error(node, 'no matching column in the active row scope or unique model measure')
+
+    def reference_error(self, node, reason):
+        line = self.text.count('\n', 0, node.start)+1
+        raise ModelError('Cannot bind ['+node.value+'] at line '+str(line)+', offset '+str(node.start)+
+                         ' to a supported measure or row-column scope: '+reason+'. Automatic rewriting is withheld.')
 
 
 def logical_plan(expression, model, owner):
@@ -317,6 +406,15 @@ def _matches(tree, text, model):
                     and column.table == table.table and column.result_type in _NUMERIC
                     and _physical(table, model) and _physical(column, model)):
                 matches.append(('OPT001', node.start, node.end, f'SUM({text[column.start:column.end]})'))
+            if table.operation == 'FILTER':
+                base, predicate = map(_plain, table.children)
+                predicate = _plain(predicate.children[0]) if predicate.operation == 'NOT' and len(predicate.children) == 1 else None
+                tested = _plain(predicate.children[0]) if predicate and predicate.operation == 'ISBLANK' and len(predicate.children) == 1 else None
+                if (base.operation == 'variable_reference' and base.result_type == 'table'
+                        and column.operation in {'column', 'extension_column'} and tested
+                        and tested.operation == column.operation and tested.target == column.target):
+                    matches.append(('OPT003', node.start, node.end,
+                                    f'SUMX({text[base.start:base.end]}, {text[column.start:column.end]})'))
         if node.operation == 'FILTER':
             inner = _plain(node.children[0])
             if inner.operation == 'FILTER':

@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.14.2/semantic_hotspots-0.14.2-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.15.0/semantic_hotspots-0.15.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.14.2"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.15.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -230,7 +230,7 @@ Runtime analysis records direct query references and **potential chain contexts*
 | Partial measure-catalog JSON | User-supplied definitions; missing columns, relationships and definitions remain unknown |
 | Binary `.pbix` / `.pbit` | Not supported; export/save as PBIP/TMDL or BIM first |
 
-General lineage uses lexical/call structure and metadata projection; rewrite proposals additionally use a small bound, typed logical subset. This is **not a full DAX compiler, TOM serializer, M parser, VertiPaq analyzer, query-plan profiler or engine binding authority**. It handles strings, comments, escaped identifiers, nested calls and case-insensitive model-name lookup. Scoped `VAR ... RETURN` declarations retain separate binding nodes and shared references, including nested scalar scopes. Their definitions are never moved or inlined. Existing guarded rules can run inside recognized scalar variables and `IF`/`NOT`/`ISBLANK`/`BLANK`/`DIVIDE` expressions, including `CALCULATE` with `REMOVEFILTERS`. Table variables, extension-column scopes and ambiguous names remain outside automatic rewrite coverage. Informational notes about bound variables do not mark a dependency chain incomplete; actual reference blockers remain explicit. Selected-measure calculation-group dependencies cannot be fully resolved statically. RLS expressions and calculation-group activation/precedence are not expanded into measure graphs. Table storage defaults/mixed partitions can remain unknown when not supplied.
+General lineage uses lexical/call structure and metadata projection; rewrite proposals additionally use a small bound, typed logical subset. This is **not a full DAX compiler, TOM serializer, M parser, VertiPaq analyzer, query-plan profiler or engine binding authority**. It handles strings, comments, escaped identifiers, nested calls and case-insensitive model-name lookup. Scoped `VAR ... RETURN` declarations retain separate binding nodes and shared references, including nested scalar and table scopes. Their definitions are never moved or inlined. Existing guarded rules can run inside recognized scalar variables and `IF`/`NOT`/`ISBLANK`/`BLANK`/`DIVIDE` expressions, including `CALCULATE` with `REMOVEFILTERS`. Known table schemas flow through physical scans, VALUES, ADDCOLUMNS, SELECTCOLUMNS, FILTER and lexical table variables. Unqualified row columns bind only in the active iterator scope; extension columns retain their defining expressions without being treated as physical lineage. Duplicate aliases, unknown input schemas and ambiguous model-measure/row-column names remain blockers. Informational notes about bound variables do not mark a dependency chain incomplete; actual reference blockers remain explicit. Selected-measure calculation-group dependencies cannot be fully resolved statically. RLS expressions and calculation-group activation/precedence are not expanded into measure graphs. Table storage defaults/mixed partitions can remain unknown when not supplied.
 
 TMDL's `ref` declarations and perspective entries are not table definitions; supply the full model folder. Model inputs are read-only. Connection strings and M/SQL partition source text are not retained in exported analysis; DAX expressions and source paths are retained. Reports may therefore contain your business logic and should be handled like the source model.
 
@@ -313,7 +313,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.14.2/semantic_hotspots-0.14.2-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.15.0/semantic_hotspots-0.15.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -389,8 +389,9 @@ The initial rule registry is deliberately small:
 |---|---|---|
 | OPT001 | `SUMX(Sales, Sales[Amount])` → `SUM(Sales[Amount])` | Same physical base table, direct physical numeric column, known type, supported enclosing syntax |
 | OPT002 | `FILTER(FILTER(Sales, p), q)` → `FILTER(Sales, (p) && (q))` | Same physical table; row-local comparisons of compatible columns/literals and Boolean combinations; no measures, calls, arithmetic or context changes inside predicates |
+| OPT003 | `SUMX(FILTER(t, NOT ISBLANK([@score])), [@score])` → `SUMX(t, [@score])` | `t` is a bound table variable; both column references bind to the same stored column; no measure callback or changed predicate |
 
-Recognized logical operations include scans, qualified columns, measure references, literals, parentheses, scalar binary operators, `SUM`, `SUMX`, `FILTER`, `COUNTROWS`, `CALCULATE`, and Boolean constants. This is **not a full DAX AST/compiler or executable physical planner**. VAR/virtual-table scopes, unsupported calls, unknown types, incomplete/cyclic chains, calculation groups, model functions, and dynamic root format expressions, and random/time-dependent chains withhold proposals. No variable hoisting, join reordering, general filter pushdown, automatic pre-aggregation or runtime plan fusion is implemented. The search emits at most 32 isolated proposals and a 16-step bounded fixed-point combination per measure. No timing benefit is inferred: the DAX engine may already normalize the alternatives.
+Recognized logical operations include scans, scoped physical/extension columns, measure references, lexical scalar/table variables, literals, parentheses, scalar binary operators, `SUM`, `SUMX`, `FILTER`, `VALUES`, `ADDCOLUMNS`, paired-name `SELECTCOLUMNS`, `COUNTROWS`, `ISEMPTY`, `MAX`/`MIN`, `YEAR`/`DATE`, `SWITCH`, `IF`, Boolean/blank tests, `DIVIDE`, and `CALCULATE`/`REMOVEFILTERS`. Temporary-column DAG references link to explicit definition nodes. Existing rewrites can run inside supported extension expressions without moving their row/filter context. This is **not a full DAX AST/compiler or executable physical planner**. Unknown table schemas, unsupported calls/types, incomplete/cyclic chains, calculation groups, model functions, dynamic root format expressions and random/time-dependent chains withhold proposals. `TODAY` has a recognized result type but still requires controlled evaluation before rewriting. No variable hoisting, join reordering, general filter pushdown, automatic pre-aggregation or runtime plan fusion is implemented. The search emits at most 32 isolated proposals and a 16-step bounded fixed-point combination per measure. No timing benefit is inferred: the DAX engine may already normalize the alternatives.
 
 ```python
 from semantic_hotspots import analyze, plan_rewrites
@@ -625,7 +626,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.14.2.
+MIT licensed. Version 0.15.0.
 
 ## Contributing and data handling
 
