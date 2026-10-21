@@ -1,11 +1,11 @@
-semantic-hotspots 0.18.1
+semantic-hotspots 0.19.0
 Requires Python 3.10 or later.
 
 Create a virtual environment:
   python -m venv .venv
 
 Install the universal wheel:
-  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.18.1/semantic_hotspots-0.18.1-py3-none-any.whl"
+  .\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.19.0/semantic_hotspots-0.19.0-py3-none-any.whl"
 
 Check the installation:
   .\.venv\Scripts\python.exe -m semantic_hotspots --version
@@ -60,7 +60,7 @@ For the one-matrix Power BI showcase, open powerbi-showcase\Showcase.pbip in a c
 Parsing, analysis and generation have no runtime dependencies. Actual DAX benchmarks require a separately installed engine. DAX Studio is optional.
 
 For direct local engine queries, install the optional client extra:
-  python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.18.1/semantic_hotspots-0.18.1-py3-none-any.whl"
+  python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.19.0/semantic_hotspots-0.19.0-py3-none-any.whl"
   python -m semantic_hotspots engine-sessions
   python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 

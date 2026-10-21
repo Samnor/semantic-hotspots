@@ -79,11 +79,23 @@ def tokenize(text: str) -> list[Token]:
                 i += 1
             out.append(Token("NAME", text[start:i], start, i))
             continue
-        if c.isdigit():
+        if c.isdigit() or (c == "." and i + 1 < len(text) and text[i + 1].isdigit()):
             start = i
-            i += 1
-            while i < len(text) and (text[i].isdigit() or text[i] == "."):
+            while i < len(text) and text[i].isdigit():
                 i += 1
+            if i < len(text) and text[i] == ".":
+                i += 1
+                while i < len(text) and text[i].isdigit():
+                    i += 1
+            if i < len(text) and text[i] in "eE":
+                exponent = i + 1
+                if exponent < len(text) and text[exponent] in "+-":
+                    exponent += 1
+                digits = exponent
+                while exponent < len(text) and text[exponent].isdigit():
+                    exponent += 1
+                if exponent > digits:
+                    i = exponent
             out.append(Token("NUMBER", text[start:i], start, i))
             continue
         out.append(Token("SYMBOL", c, i, i + 1))

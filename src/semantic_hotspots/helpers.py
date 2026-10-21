@@ -24,7 +24,10 @@ def _defined(entity):
 
 
 def _signature(expression):
-    return [(t.kind,t.value) for t in tokenize(expression or '')]
+    # DAX function/keyword/variable names are case-insensitive; quoted string
+    # payloads remain exact (e.g. EXACT and case-sensitive output text).
+    return [(t.kind,t.value.casefold() if t.kind == 'NAME' else t.value)
+            for t in tokenize(expression or '')]
 
 
 def helper_requirements(source,measure,*,table=None):

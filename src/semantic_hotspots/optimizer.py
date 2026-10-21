@@ -64,6 +64,19 @@ RULES = {
                                  'A fresh local VAR retains the original IF, division operator and lazy numerator branch',
                                  'Exact values and BLANK behavior require engine validation; no speedup is predicted'],
                'source_url': 'https://learn.microsoft.com/en-us/dax/best-practices/dax-variables'},
+    'OPT008': {'title': 'Replace a constant-one counting iterator with COUNTROWS',
+               'preconditions': ['SUMX or COUNTX evaluates the literal integer 1 for every row',
+                                 'The original table expression and all filter/row scopes are retained exactly',
+                                 'No measure callback or column expression is dropped; empty input preserves BLANK',
+                                 'Native exact-value and BLANK checks are required; no speedup is predicted'],
+               'source_url': 'https://learn.microsoft.com/en-us/dax/countrows-function-dax'},
+    'OPT009': {'title': 'Hoist a row-invariant count out of a physical-table SUMX',
+               'preconditions': ['SUMX scans a physical table without an enclosing row context',
+                                 'The body is directly COUNT of a physical column from that same table, or COUNTROWS of the same table',
+                                 'No measure callback or CALCULATE: the count has no implicit context transition and is constant across rows',
+                                 'Both operands are nonnegative integer counts; empty input and blank counts retain BLANK',
+                                 'Engine validation is required; the engine may already perform this simplification'],
+               'source_url': 'https://learn.microsoft.com/en-us/dax/calculate-function-dax'},
 }
 
 
@@ -127,7 +140,7 @@ class _Parser:
         bindings = []
         while True:
             name = self.take()
-            if (name.kind != 'NAME' or not re.fullmatch(r'(?:__)?[A-Za-z][A-Za-z0-9_]*', name.value)
+            if (name.kind != 'NAME' or not re.fullmatch(r'_*[A-Za-z][A-Za-z0-9_]*', name.value)
                     or name.value.upper() in {'VAR', 'RETURN', 'TRUE', 'FALSE', 'NOT', 'IN', 'VISIBLE'}
                     or name.value.casefold() in self.resolver.tables or name.value.casefold() in self.scopes[-1]):
                 raise ModelError('Unsupported or duplicate VAR name at offset '+str(name.start))
@@ -182,7 +195,7 @@ class _Parser:
             end = self.take(')').end
             node = LogicalNode('group', 'unknown', token.start, end, [child])
         elif token.kind in {'NUMBER', 'STRING'}:
-            if token.kind == 'NUMBER' and not re.fullmatch(r'\d+(?:\.\d+)?', token.value):
+            if token.kind == 'NUMBER' and not re.fullmatch(r'(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?', token.value):
                 raise ModelError('Unsupported numeric literal')
             node = LogicalNode('literal', 'number' if token.kind == 'NUMBER' else 'string', token.start, token.end, value=token.value)
         elif token.kind == 'NAME' and self.peek('('):
@@ -192,7 +205,11 @@ class _Parser:
                 args.append(self.expression())
                 while self.peek(','):
                     self.take(',')
-                    args.append(self.expression())
+                    if token.value.upper() == 'DATEDIFF' and len(args) == 2 and self.peek() and self.peek().kind == 'NAME' and self.peek().value.upper() in {'SECOND','MINUTE','HOUR','DAY','WEEK','MONTH','QUARTER','YEAR'}:
+                        interval = self.take()
+                        args.append(LogicalNode('interval', 'interval', interval.start, interval.end, value=interval.value.upper()))
+                    else:
+                        args.append(self.expression())
             end = self.take(')').end
             node = LogicalNode(token.value.upper(), 'unknown', token.start, end, args)
         elif token.kind in {'NAME', 'QUOTED'}:
@@ -242,7 +259,7 @@ class _Parser:
         for i, child in enumerate(node.children):
             child_rows, child_filters = rows, filters
             child_schemas = schemas
-            if ((node.operation in {'FILTER', 'SUMX'} and i == 1)
+            if ((node.operation in {'FILTER', 'SUMX', 'COUNTX'} and i == 1)
                     or (node.operation in {'ADDCOLUMNS', 'SELECTCOLUMNS'} and i >= 2 and i % 2 == 0)):
                 source = node.children[0]
                 child_rows = rows + ((source.table or 'table expression at '+str(source.start)),)
@@ -263,7 +280,7 @@ class _Parser:
         if op == 'unbound_reference':
             self.bind_reference(node, schemas, column_argument)
             return
-        if op in {'column', 'measure', 'literal'}:
+        if op in {'column', 'measure', 'literal', 'interval'}:
             return
         if op == 'variable_reference':
             binding = self.variables[node.target]
@@ -296,6 +313,8 @@ class _Parser:
         elif op == 'DATE' and len(c) == 3 and all(x.result_type in _NUMERIC | {'number'} for x in c):
             node.result_type = 'datetime'
         elif op == 'YEAR' and len(c) == 1 and c[0].result_type in {'datetime', 'scalar', 'blank'}:
+            node.result_type = 'int64'
+        elif op == 'DATEDIFF' and len(c) == 3 and all(x.result_type in _NUMERIC | {'number', 'datetime', 'date', 'scalar', 'blank'} for x in c[:2]) and c[2].operation == 'interval':
             node.result_type = 'int64'
         elif op == 'ISBLANK' and len(c) == 1 and c[0].result_type not in {'table', 'unknown'}:
             node.result_type = 'boolean'
@@ -343,6 +362,8 @@ class _Parser:
                 node.supported &= value.result_type not in {'table', 'unknown', 'filter_modifier'}
         elif op == 'SUMX' and len(c) == 2 and c[0].result_type == 'table' and c[1].result_type in _NUMERIC | {'number', 'scalar', 'blank'}:
             node.result_type = c[1].result_type
+        elif op == 'COUNTX' and len(c) == 2 and c[0].result_type == 'table' and c[1].result_type in _NUMERIC | {'number', 'scalar', 'blank', 'string', 'datetime'}:
+            node.result_type = 'int64'
         elif op == 'FILTER' and len(c) == 2 and c[0].result_type == 'table' and c[1].result_type == 'boolean':
             node.result_type, node.table = 'table', c[0].table
             node.table_columns = dict(c[0].table_columns)
@@ -493,6 +514,10 @@ def _matches(tree, text, model, notes=None):
         left, right = _plain(left), _plain(right)
         return (left.operation, left.target, left.value, len(left.children)) == (right.operation, right.target, right.value, len(right.children)) and all(same(a,b) for a,b in zip(left.children,right.children))
     def visit(node):
+        if node.operation in {'COUNTX', 'SUMX'} and len(node.children) == 2:
+            table, value = map(_plain, node.children)
+            if table.result_type == 'table' and value.operation == 'literal' and value.result_type == 'number' and value.value == '1':
+                matches.append(('OPT008', node.start, node.end, 'COUNTROWS('+text[table.start:table.end]+')'))
         if node.operation == 'IF' and len(node.children) == 3:
             condition, division, alternate = map(_plain, node.children)
             if (condition.operation == 'binary' and condition.value == '<>' and
@@ -538,6 +563,13 @@ def _matches(tree, text, model, notes=None):
                 # the measure's home table after the rewrite.
                 if reference.startswith('['):reference = model.entities[column.target].qualified_name
                 matches.append(('OPT001', node.start, node.end, f'SUM({reference})'))
+            if not node.row_context and table.operation == 'scan' and _physical(table, model):
+                counted = _plain(column.children[0]) if column.operation in {'COUNT','COUNTROWS'} and len(column.children) == 1 else None
+                if (counted and counted.table == table.table and _physical(counted, model) and
+                        ((column.operation == 'COUNT' and counted.operation == 'column' and counted.result_type in _NUMERIC | {'datetime'}) or
+                         (column.operation == 'COUNTROWS' and counted.operation == 'scan'))):
+                    matches.append(('OPT009', node.start, node.end,
+                                    '(COUNTROWS('+text[table.start:table.end]+') * '+column.operation+'('+model.entities[counted.target].qualified_name+'))'))
             filtered = table
             if table.operation == 'variable_reference' and table.target in definitions:
                 filtered = _plain(definitions[table.target])
@@ -581,12 +613,12 @@ def _type_gap_only(tree):
         for child in node.children:visit(child)
     visit(tree)
     definitions = {n.target:n.children[0] for n in nodes if n.operation == 'variable_definition'}
-    arities = {'TRUE':{0},'FALSE':{0},'BLANK':{0},'TODAY':{0},'DATE':{3},'YEAR':{1},
+    arities = {'TRUE':{0},'FALSE':{0},'BLANK':{0},'TODAY':{0},'DATE':{3},'YEAR':{1},'DATEDIFF':{3},'COUNTX':{2},
                'ISBLANK':{1},'NOT':{1},'IF':{2,3},'DIVIDE':{2,3},'SUM':{1},'MAX':{1},
                'MIN':{1},'AVERAGE':{1},'COUNT':{1},'COUNTA':{1},'DISTINCTCOUNT':{1},
                'ALL':{1},'VALUES':{1},'SUMX':{2},'FILTER':{2},'ISEMPTY':{1},'COUNTROWS':{1}}
     structural = {'scan','column','measure','literal','variable_reference','variable_definition',
-                  'let','group','unary','binary','extension_column'}
+                  'let','group','unary','binary','extension_column','interval'}
     def unknown(node, seen=frozenset()):
         if node.operation == 'column' and node.result_type == 'unknown':return True
         if node.operation == 'variable_reference' and node.target not in seen:

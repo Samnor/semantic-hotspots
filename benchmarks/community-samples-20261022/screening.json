@@ -1,0 +1,392 @@
+{
+  "registered_selection": [
+    {
+      "repo": "Dashboard-Design/Power-BI-Design-Files",
+      "commit": "3c56a12f6481d24acdf6c01442a496d020f76e55",
+      "path": "Full Dashboards/Agents Performance - Dashboard/Agents Performance - Dashboard.pbix"
+    },
+    {
+      "repo": "Dashboard-Design/Power-BI-Design-Files",
+      "commit": "3c56a12f6481d24acdf6c01442a496d020f76e55",
+      "path": "Full Dashboards/Ecommerce Conversion Dashboard/Ecommerce Conversion Dashboard.pbix"
+    },
+    {
+      "repo": "Dashboard-Design/Power-BI-Design-Files",
+      "commit": "3c56a12f6481d24acdf6c01442a496d020f76e55",
+      "path": "Full Dashboards/Exceutive Sales Report/Exceutive Sales Report - Toast Notifictaion.pbix"
+    },
+    {
+      "repo": "Dashboard-Design/Power-BI-Design-Files",
+      "commit": "3c56a12f6481d24acdf6c01442a496d020f76e55",
+      "path": "Full Dashboards/GeoSales Dashboard - Azure Map/GeoSales Dashboard - Azure Map.pbix"
+    },
+    {
+      "repo": "Dashboard-Design/Power-BI-Design-Files",
+      "commit": "3c56a12f6481d24acdf6c01442a496d020f76e55",
+      "path": "Full Dashboards/IT Support Performance Dashboard/IT_Support_Ticket_Desk.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Bank Loan Insights/powerBI/bank_loan_data_insights.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Crypto Market Trends/CryptoCurrency_Dashboard.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Global Universities' Success Analysis/powerBI/Global_Univ_Analysis.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "HR Workforce Analysis/analysis/HR_Insights_&_Trends.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Movie Rental Store Analysis/powerBI/movie_rental_analysis.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Sales Performance Analysis/analysis/Sales_Analysis.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Superstore Retail Analytics/Superstore_Retail_Performance_Analyzer.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "U.K. Road Accident Analysis/Road_Accident_Analysis.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "U.S. Healthcare Industry Dynamics/analytics/US-healthcare-dynamics.pbix"
+    },
+    {
+      "repo": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Zomato Restaurants Analysis/Zomato_Insights_Dashboard.pbix"
+    },
+    {
+      "repo": "gusbavia/city-sustainability-scorecard",
+      "commit": "87020be37c73b8b5e34c91407919987e55e75780",
+      "path": "City Sustainability Scorecard (World Champs 26).pbix"
+    },
+    {
+      "repo": "gusbavia/the-world-of-peaches",
+      "commit": "0692068e53acf75550c0290824f0fc0aa6090a8a",
+      "path": "The World of Peaches (World Champs 26).pbix"
+    },
+    {
+      "repo": "github-copilot-resources/copilot-metrics-viewer-power-bi",
+      "commit": "219d773d3d3b86628d51091ef5be85a1ba62c420",
+      "path": "samples/GitHub Copilot - Adoption Details.pbix"
+    },
+    {
+      "repo": "gopiashokan/Healthcare-Data-Analysis-using-PowerBI",
+      "commit": "10e3d59f3d6e3a0a8349d25d503d025824d56d23",
+      "path": "Healthcare_Data_Analysis.pbix"
+    },
+    {
+      "repo": "mihikagaonkar/OTC-Dashboard",
+      "commit": "0d0b4955c66fcd323b67e25e5e9ebb0642b20fd5",
+      "path": "results/otc catchup analysis.pbix"
+    },
+    {
+      "repo": "shivanshka/Cricket_Analytics",
+      "commit": "2cc4010796c2298ad90f7fceab656b2b8839a851",
+      "path": "T20_WorldCup_Analysis.pbix"
+    },
+    {
+      "repo": "BasseyIsrael/Inventory-Management-System",
+      "commit": "84a183a2a8f8d05b9b22148a5e495bf99ff29131",
+      "path": "Dashboards/Inventory Management Dashboard _Final.pbix"
+    },
+    {
+      "repo": "themrityunjaypathak/FinanceReportDashboard",
+      "commit": "9c64d2eb295b4b4408e3d82b5ba1155fcdb303e9",
+      "path": "Finance.pbix"
+    },
+    {
+      "repo": "dyneth02/Data-Jobs-2024-3.0-PowerBI-Project",
+      "commit": "fbb69612ff3f5acb260f64280e47d5427d54357e",
+      "path": "Data_Jobs_2024_3.0.pbix"
+    },
+    {
+      "repo": "patilkiran123/yfinance-powerbi-live-stock-dashboard",
+      "commit": "c230cab7030fd2a056016523d1fe3846395c1d61",
+      "path": "stocks historical + live.pbix"
+    },
+    {
+      "repo": "DataVisualizationExpert/Customer-Churn-Analysis-using-Power-BI",
+      "commit": "5990fa65dde98c2a76aa293cac70c84606d54b47",
+      "path": "Customer Churn Dashboard.pbix"
+    },
+    {
+      "repo": "FarhaKousar1601/Walmart-Sales-Data-Analysis",
+      "commit": "b11982276b6eae986cade9798237a9f42022e750",
+      "path": "Walmart Sales DashBoard.pbix"
+    },
+    {
+      "repo": "haroldeustaquio/Analysis-of-Oncological-Diseases-in-Peru",
+      "commit": "effa5a705953003c2e0aa728caff2cdf117597c2",
+      "path": "Dashboard/dash.pbix"
+    },
+    {
+      "repo": "mdkeum/data-analytics-portfolio",
+      "commit": "3e1b3f88747b6cd95eef212dc734bc441c1d77ce",
+      "path": "Power_BI_Projects/1_Global_Chocolate_Factory_Sales_Dashboard/1_Global_Chocolate_Factory_Sales_Dashboard.pbix"
+    },
+    {
+      "repo": "shaun-mia/Power-BI-Data-Analysis-Project",
+      "commit": "ded7c418b6e746f9e55af69cdf4352af1018e0c5",
+      "path": "Bangladesh Crime Data Analysis_2024/Crime_Statistics_2024.pbix"
+    },
+    {
+      "repo": "abhi-gm/PowerBI-Dashboard-for-Price-Optimization-and-Dynamic-Forecasting",
+      "commit": "d683ad14051c041141c3ba49f7e2ac2dd7ede836",
+      "path": "Dynamic pricing and demand forecasting/DIGINIKE.pbix"
+    },
+    {
+      "repo": "AnthonyKorie/Sales-Revenue-Analysis",
+      "commit": "f3230a707e0a0b283d65d3a8b6d9a0d38f0dcf27",
+      "path": "sales_analysis.pbix"
+    },
+    {
+      "repo": "adithyasingapore/portfolio_1-sql_powerbi",
+      "commit": "2368b895c2763b96bc79eb7a5a7f867868860479",
+      "path": "portfolio_1-project-visualization_powerbi.pbix"
+    }
+  ],
+  "exclusions_and_reserves": [
+    {
+      "id": "extra-07",
+      "name": "CryptoCurrency_Dashboard",
+      "publisher": "virajbhutada",
+      "repository": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Crypto Market Trends/CryptoCurrency_Dashboard.pbix",
+      "source_url": "https://github.com/virajbhutada/InsightForge/blob/ee899a822e05377803d0cfa805bfe6a7958bac53/Crypto%20Market%20Trends/CryptoCurrency_Dashboard.pbix",
+      "download_url": "https://raw.githubusercontent.com/virajbhutada/InsightForge/ee899a822e05377803d0cfa805bfe6a7958bac53/Crypto%20Market%20Trends/CryptoCurrency_Dashboard.pbix",
+      "bytes": 1470058,
+      "sha256": "b4b8400aed9904afb06d62f8103aec79ccc1c15ad018bd8997717749f348061a",
+      "git_blob_sha1": "79ab3761842bf64000261c225abf6df1fe5ff36a",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 3,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-11",
+      "name": "Sales_Analysis",
+      "publisher": "virajbhutada",
+      "repository": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Sales Performance Analysis/analysis/Sales_Analysis.pbix",
+      "source_url": "https://github.com/virajbhutada/InsightForge/blob/ee899a822e05377803d0cfa805bfe6a7958bac53/Sales%20Performance%20Analysis/analysis/Sales_Analysis.pbix",
+      "download_url": "https://raw.githubusercontent.com/virajbhutada/InsightForge/ee899a822e05377803d0cfa805bfe6a7958bac53/Sales%20Performance%20Analysis/analysis/Sales_Analysis.pbix",
+      "bytes": 3055084,
+      "sha256": "f5b7a8908087e5b97289d415c40ba972a1f29df7ebc9d5de9d54ba6473512aff",
+      "git_blob_sha1": "4598f29051d2659c2565bdcbf9004167911562d2",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 4,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-12",
+      "name": "Superstore_Retail_Performance_Analyzer",
+      "publisher": "virajbhutada",
+      "repository": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Superstore Retail Analytics/Superstore_Retail_Performance_Analyzer.pbix",
+      "source_url": "https://github.com/virajbhutada/InsightForge/blob/ee899a822e05377803d0cfa805bfe6a7958bac53/Superstore%20Retail%20Analytics/Superstore_Retail_Performance_Analyzer.pbix",
+      "download_url": "https://raw.githubusercontent.com/virajbhutada/InsightForge/ee899a822e05377803d0cfa805bfe6a7958bac53/Superstore%20Retail%20Analytics/Superstore_Retail_Performance_Analyzer.pbix",
+      "bytes": 310055,
+      "sha256": "aa52f7bedc5bdbc9db8818d14bb799fdf9498969c41b4cc147d2fa7124ba9c1f",
+      "git_blob_sha1": "b7f2bbf1833840e52309aceb2ae2c9b2bb9364eb",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 6,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-15",
+      "name": "Zomato_Insights_Dashboard",
+      "publisher": "virajbhutada",
+      "repository": "virajbhutada/InsightForge",
+      "commit": "ee899a822e05377803d0cfa805bfe6a7958bac53",
+      "path": "Zomato Restaurants Analysis/Zomato_Insights_Dashboard.pbix",
+      "source_url": "https://github.com/virajbhutada/InsightForge/blob/ee899a822e05377803d0cfa805bfe6a7958bac53/Zomato%20Restaurants%20Analysis/Zomato_Insights_Dashboard.pbix",
+      "download_url": "https://raw.githubusercontent.com/virajbhutada/InsightForge/ee899a822e05377803d0cfa805bfe6a7958bac53/Zomato%20Restaurants%20Analysis/Zomato_Insights_Dashboard.pbix",
+      "bytes": 1663648,
+      "sha256": "4e6aa929f5019194b1d36ff430318a8ba783e2f866636133bd1f52c7aa48c350",
+      "git_blob_sha1": "2512bf755c7f0bf608592fa968cad6e60c97a79f",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 6,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-18",
+      "name": "GitHub Copilot - Adoption Details",
+      "publisher": "github-copilot-resources",
+      "repository": "github-copilot-resources/copilot-metrics-viewer-power-bi",
+      "commit": "219d773d3d3b86628d51091ef5be85a1ba62c420",
+      "path": "samples/GitHub Copilot - Adoption Details.pbix",
+      "source_url": "https://github.com/github-copilot-resources/copilot-metrics-viewer-power-bi/blob/219d773d3d3b86628d51091ef5be85a1ba62c420/samples/GitHub%20Copilot%20-%20Adoption%20Details.pbix",
+      "download_url": "https://raw.githubusercontent.com/github-copilot-resources/copilot-metrics-viewer-power-bi/219d773d3d3b86628d51091ef5be85a1ba62c420/samples/GitHub%20Copilot%20-%20Adoption%20Details.pbix",
+      "bytes": 1260878,
+      "sha256": "5a5c3c0b9589800d92655f50e384917d425b8208783903f652bb6fd1796bd0f9",
+      "git_blob_sha1": "ffcab9a2ef570c802a7e97032341c873ff74fadf",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 38,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-20",
+      "name": "otc catchup analysis",
+      "publisher": "mihikagaonkar",
+      "repository": "mihikagaonkar/OTC-Dashboard",
+      "commit": "0d0b4955c66fcd323b67e25e5e9ebb0642b20fd5",
+      "path": "results/otc catchup analysis.pbix",
+      "source_url": "https://github.com/mihikagaonkar/OTC-Dashboard/blob/0d0b4955c66fcd323b67e25e5e9ebb0642b20fd5/results/otc%20catchup%20analysis.pbix",
+      "download_url": "https://raw.githubusercontent.com/mihikagaonkar/OTC-Dashboard/0d0b4955c66fcd323b67e25e5e9ebb0642b20fd5/results/otc%20catchup%20analysis.pbix",
+      "bytes": 144810,
+      "sha256": "df8c2f4211661d4c72a1d3abb5c0bc22b8e1374c9bae3b466d5f22c5c499e2bf",
+      "git_blob_sha1": "0378e7709228c9803e99ed0ce729f85165802c14",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 6,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-23",
+      "name": "Finance",
+      "publisher": "themrityunjaypathak",
+      "repository": "themrityunjaypathak/FinanceReportDashboard",
+      "commit": "9c64d2eb295b4b4408e3d82b5ba1155fcdb303e9",
+      "path": "Finance.pbix",
+      "source_url": "https://github.com/themrityunjaypathak/FinanceReportDashboard/blob/9c64d2eb295b4b4408e3d82b5ba1155fcdb303e9/Finance.pbix",
+      "download_url": "https://raw.githubusercontent.com/themrityunjaypathak/FinanceReportDashboard/9c64d2eb295b4b4408e3d82b5ba1155fcdb303e9/Finance.pbix",
+      "bytes": 1076783,
+      "sha256": "c8590ca2ebaf4858ac2ee7886b0dcb6f831f3d5a36fb21aa2dd4013c22585017",
+      "git_blob_sha1": "a2d43b09ecffb2ce28a93aaf25bc5169a84d7e29",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 3,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-25",
+      "name": "stocks historical + live",
+      "publisher": "patilkiran123",
+      "repository": "patilkiran123/yfinance-powerbi-live-stock-dashboard",
+      "commit": "c230cab7030fd2a056016523d1fe3846395c1d61",
+      "path": "stocks historical + live.pbix",
+      "source_url": "https://github.com/patilkiran123/yfinance-powerbi-live-stock-dashboard/blob/c230cab7030fd2a056016523d1fe3846395c1d61/stocks%20historical%20%2B%20live.pbix",
+      "download_url": "https://raw.githubusercontent.com/patilkiran123/yfinance-powerbi-live-stock-dashboard/c230cab7030fd2a056016523d1fe3846395c1d61/stocks%20historical%20%2B%20live.pbix",
+      "bytes": 495452,
+      "sha256": "17b372ed65b1a839a6cb693ba271d55cb1d53832968ae93018163d5146759c45",
+      "git_blob_sha1": "90fe555d28f3edcb0abe078857b7171419e7034d",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 5,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-27",
+      "name": "Walmart Sales DashBoard",
+      "publisher": "FarhaKousar1601",
+      "repository": "FarhaKousar1601/Walmart-Sales-Data-Analysis",
+      "commit": "b11982276b6eae986cade9798237a9f42022e750",
+      "path": "Walmart Sales DashBoard.pbix",
+      "source_url": "https://github.com/FarhaKousar1601/Walmart-Sales-Data-Analysis/blob/b11982276b6eae986cade9798237a9f42022e750/Walmart%20Sales%20DashBoard.pbix",
+      "download_url": "https://raw.githubusercontent.com/FarhaKousar1601/Walmart-Sales-Data-Analysis/b11982276b6eae986cade9798237a9f42022e750/Walmart%20Sales%20DashBoard.pbix",
+      "bytes": 1249326,
+      "sha256": "f1bea1bb71b5ebff0912fbc9d2f88f0918fcc6eed9bae04403c6d199f361df78",
+      "git_blob_sha1": "f0c38549ee3c439539b08195da999b8afe4de945",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 4,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-29",
+      "name": "1_Global_Chocolate_Factory_Sales_Dashboard",
+      "publisher": "mdkeum",
+      "repository": "mdkeum/data-analytics-portfolio",
+      "commit": "3e1b3f88747b6cd95eef212dc734bc441c1d77ce",
+      "path": "Power_BI_Projects/1_Global_Chocolate_Factory_Sales_Dashboard/1_Global_Chocolate_Factory_Sales_Dashboard.pbix",
+      "source_url": "https://github.com/mdkeum/data-analytics-portfolio/blob/3e1b3f88747b6cd95eef212dc734bc441c1d77ce/Power_BI_Projects/1_Global_Chocolate_Factory_Sales_Dashboard/1_Global_Chocolate_Factory_Sales_Dashboard.pbix",
+      "download_url": "https://raw.githubusercontent.com/mdkeum/data-analytics-portfolio/3e1b3f88747b6cd95eef212dc734bc441c1d77ce/Power_BI_Projects/1_Global_Chocolate_Factory_Sales_Dashboard/1_Global_Chocolate_Factory_Sales_Dashboard.pbix",
+      "bytes": 63070,
+      "sha256": "38d63e14dcea9b54393c6c4b67a334dce5043d6e8c5e445bc5d069c509bf8778",
+      "git_blob_sha1": "bab7e21016a4dedba669253182abc53cce5d0ff1",
+      "measure_count": 0,
+      "measure_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "table_count": 3,
+      "exclusion": "No explicit measures"
+    },
+    {
+      "id": "extra-31",
+      "name": "DIGINIKE",
+      "publisher": "abhi-gm",
+      "repository": "abhi-gm/PowerBI-Dashboard-for-Price-Optimization-and-Dynamic-Forecasting",
+      "commit": "d683ad14051c041141c3ba49f7e2ac2dd7ede836",
+      "path": "Dynamic pricing and demand forecasting/DIGINIKE.pbix",
+      "source_url": "https://github.com/abhi-gm/PowerBI-Dashboard-for-Price-Optimization-and-Dynamic-Forecasting/blob/d683ad14051c041141c3ba49f7e2ac2dd7ede836/Dynamic%20pricing%20and%20demand%20forecasting/DIGINIKE.pbix",
+      "download_url": "https://raw.githubusercontent.com/abhi-gm/PowerBI-Dashboard-for-Price-Optimization-and-Dynamic-Forecasting/d683ad14051c041141c3ba49f7e2ac2dd7ede836/Dynamic%20pricing%20and%20demand%20forecasting/DIGINIKE.pbix",
+      "bytes": 4501291,
+      "sha256": "90cf285eea84e7626519f1f115d589d85584f059d6af18ecefe95a373210dd08",
+      "git_blob_sha1": "be27ac82b4799e641f9db8c56186452be0051574",
+      "measure_count": 1,
+      "measure_fingerprint": "5fbc5dcc1eecbbd2ca1776bc021a33f8e50d43d7ed59c0e9691f4c13e684dd35",
+      "table_count": 3,
+      "exclusion": "Reserve after first twenty eligible reports"
+    },
+    {
+      "id": "extra-32",
+      "name": "sales_analysis",
+      "publisher": "AnthonyKorie",
+      "repository": "AnthonyKorie/Sales-Revenue-Analysis",
+      "commit": "f3230a707e0a0b283d65d3a8b6d9a0d38f0dcf27",
+      "path": "sales_analysis.pbix",
+      "source_url": "https://github.com/AnthonyKorie/Sales-Revenue-Analysis/blob/f3230a707e0a0b283d65d3a8b6d9a0d38f0dcf27/sales_analysis.pbix",
+      "download_url": "https://raw.githubusercontent.com/AnthonyKorie/Sales-Revenue-Analysis/f3230a707e0a0b283d65d3a8b6d9a0d38f0dcf27/sales_analysis.pbix",
+      "bytes": 152982,
+      "sha256": "c2b4e601fd1660764618b53090397dd613af8f9b4f1be5a6e31a0838b8405772",
+      "git_blob_sha1": "3024fc629c3db8509a819c25fb51adedf8da6455",
+      "measure_count": 1,
+      "measure_fingerprint": "902934ca8a4c6a373d524207562da6017e712beeecd2df3a0f3e0ed0a87939be",
+      "table_count": 4,
+      "exclusion": "Reserve after first twenty eligible reports"
+    },
+    {
+      "id": "extra-33",
+      "name": "portfolio_1-project-visualization_powerbi",
+      "publisher": "adithyasingapore",
+      "repository": "adithyasingapore/portfolio_1-sql_powerbi",
+      "commit": "2368b895c2763b96bc79eb7a5a7f867868860479",
+      "path": "portfolio_1-project-visualization_powerbi.pbix",
+      "source_url": "https://github.com/adithyasingapore/portfolio_1-sql_powerbi/blob/2368b895c2763b96bc79eb7a5a7f867868860479/portfolio_1-project-visualization_powerbi.pbix",
+      "download_url": "https://raw.githubusercontent.com/adithyasingapore/portfolio_1-sql_powerbi/2368b895c2763b96bc79eb7a5a7f867868860479/portfolio_1-project-visualization_powerbi.pbix",
+      "bytes": 1198219,
+      "sha256": "47d8d816bc5cd4d739d3d9a8d72939acd37f815ccc5db1ae7e533a17f4d27c20",
+      "git_blob_sha1": "8ae8fbdfced5c34ea8c594500e4f4e294cd0da7d",
+      "measure_count": 4,
+      "measure_fingerprint": "5ff82efcf1ec391f2057656f1cb2d52d8910f17f7abe582f4374b7a7065f97e7",
+      "table_count": 8,
+      "exclusion": "Reserve after first twenty eligible reports"
+    }
+  ]
+}

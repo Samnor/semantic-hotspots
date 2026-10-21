@@ -158,7 +158,7 @@ class RewriteExperimentTests(unittest.TestCase):
         self.executable.write_text('Mock runner, never executed', encoding='utf-8')
 
     def fake_runner(self, *, mismatch=False, blank=False, fail_validation=False,
-                    fail_benchmark=False, missing_iterations=False, timeout=False, times=(20, 10)):
+                    fail_benchmark=False, missing_iterations=False, timeout=False, alias_mismatch=False, times=(20, 10)):
         cases = {c['id']: c for c in self.manifest['cases']}
         def runner(argv, **kwargs):
             self.assertFalse(kwargs.get('shell', False))
@@ -167,14 +167,14 @@ class RewriteExperimentTests(unittest.TestCase):
             output = Path(argv[2])
             identity, kind = output.stem.split('-', 1)
             case = cases[identity]
-            if kind == 'validation':
+            if kind in {'validation', 'alias_validation'}:
                 if fail_validation:
                     return subprocess.CompletedProcess(argv, 1, '', 'Fictional engine error')
                 cols = case['columns']
                 with output.open('w', encoding='utf-8', newline='') as stream:
                     writer = csv.writer(stream)
                     writer.writerow(['['+v+']' for v in cols.values()])
-                    writer.writerow(['' if blank else '42', '' if blank else '42', '0' if mismatch else '1', int(blank), int(blank)])
+                    writer.writerow(['' if blank else '42', '' if blank else '42', '0' if mismatch or (alias_mismatch and kind=='alias_validation') else '1', int(blank), int(blank)])
             else:
                 if fail_benchmark:
                     return subprocess.CompletedProcess(argv, 1, '', 'Fictional benchmark error')
@@ -202,13 +202,22 @@ class RewriteExperimentTests(unittest.TestCase):
         self.assertEqual(len(self.manifest['cases']), 3)
         case = self.manifest['cases'][0]
         self.assertIn('DEFINE MEASURE', case['queries']['candidate']['query'])
-        self.assertNotIn('DEFINE MEASURE', case['queries']['baseline']['query'])
+        self.assertIn('DEFINE MEASURE', case['queries']['baseline']['query'])
+        self.assertEqual(case['queries']['baseline']['query'].split('EVALUATE')[1], case['queries']['candidate']['query'].split('EVALUATE')[1])
+        self.assertIn('ISBLANK', case['queries']['alias_validation']['query'])
         self.assertIn('ISBLANK', case['queries']['validation']['query'])
         self.assertIn(' == ', case['queries']['validation']['query'])
         self.assertIn('not_run', (self.directory/'rewrite-results.json').read_text())
         before = self.bundle.model_path.read_bytes()
         self.execute(self.fake_runner())
         self.assertEqual(before, self.bundle.model_path.read_bytes())
+
+    def test_original_alias_mismatch_withholds_timing_even_if_candidate_matches(self):
+        result, calls = self.execute(self.fake_runner(alias_mismatch=True))
+        row = result.to_dict()['ranked_candidates'][0]
+        self.assertEqual(row['validation_status'], 'failed')
+        self.assertEqual(row['performance_status'], 'withheld_validation_failed')
+        self.assertTrue(all(c.args[0][1]=='csv' for c in calls.call_args_list))
 
     def test_direct_client_preserves_validation_gate_and_fingerprinted_evidence(self):
         for mismatch in [False, True]:
@@ -246,8 +255,8 @@ class RewriteExperimentTests(unittest.TestCase):
         self.assertEqual(len(data['cases']), 3)
         self.assertEqual(len(data['cases'][0]['comparisons']), 2)
         self.assertEqual(data['cases'][0]['comparisons'][0]['change_percent'], 50)
-        self.assertEqual(mock.call_count, 9)
-        self.assertTrue(all('csv' == c.args[0][1] for c in mock.call_args_list[:3]))
+        self.assertEqual(mock.call_count, 12)
+        self.assertTrue(all('csv' == c.args[0][1] for c in mock.call_args_list[:6]))
         report = (self.directory/'experiment-results/experiment.html').read_text(encoding='utf-8')
         self.assertIn('Before', report)
         self.assertIn('Candidate', report)
@@ -264,7 +273,7 @@ class RewriteExperimentTests(unittest.TestCase):
                 row = result.to_dict()['ranked_candidates'][0]
                 self.assertEqual(row['validation_status'], validation)
                 self.assertEqual(row['performance_status'], performance)
-                self.assertEqual(mock.call_count, 3)
+                self.assertEqual(mock.call_count, 6)
 
     def test_timing_errors_missing_iterations_and_slower_candidates_are_honest(self):
         for options, expected in [({'fail_benchmark': True}, 'unknown'),
@@ -274,6 +283,19 @@ class RewriteExperimentTests(unittest.TestCase):
             with self.subTest(options=options):
                 result, _ = self.execute(self.fake_runner(**options), results_directory=self.root/str(len(list(self.root.iterdir()))))
                 self.assertEqual(result.to_dict()['ranked_candidates'][0]['performance_status'], expected)
+
+    def test_small_or_overlapping_timing_gains_are_inconclusive(self):
+        for samples in [(10,9.9),([16,20,24],[12,16,20])]:
+            counts={}
+            def times(case,kind):
+                key=(case['id'],kind);index=counts.get(key,0);counts[key]=index+1
+                values=samples[kind=='candidate']
+                return values[index%len(values)] if isinstance(values,list) else values
+            result,_=self.execute(self.fake_runner(times=times),results_directory=self.root/str(len(list(self.root.iterdir()))))
+            row=result.to_dict()['ranked_candidates'][0]
+            self.assertEqual(row['performance_status'],'inconclusive')
+            self.assertFalse(row['selected_for_review'])
+            self.assertFalse(result.to_dict()['fastest_observed_candidate_ids'])
 
     def test_scenario_regression_is_mixed_and_never_selected_for_review(self):
         def times(case, kind):
@@ -324,6 +346,18 @@ class RewriteExperimentTests(unittest.TestCase):
         query.write_text('EVALUATE ROW("changed",1)')
         with self.assertRaises(ModelError):
             collect_rewrite_results(self.directory, self.root/'missing-results')
+
+    def test_large_quoted_text_values_are_not_reported_as_dax_failures(self):
+        from semantic_hotspots.experiments import _validation
+        path=self.root/'large-validation.csv';columns=self.manifest['cases'][0]['columns']
+        payload='<svg title="quoted">'+('x'*150000)+'\n</svg>'
+        with path.open('w',newline='',encoding='utf-8') as stream:
+            writer=csv.writer(stream);writer.writerow(columns.values());writer.writerow([payload,payload,'1','0','0'])
+        previous=csv.field_size_limit()
+        try:
+            csv.field_size_limit(131072)
+            self.assertEqual(_validation(path,columns)['status'],'passed')
+        finally:csv.field_size_limit(previous)
 
     def test_zero_rows_bad_headers_and_blank_mismatch_fail_validation(self):
         from semantic_hotspots.experiments import _validation

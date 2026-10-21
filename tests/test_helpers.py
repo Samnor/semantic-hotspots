@@ -59,6 +59,19 @@ class HelperRecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ModelError,'selected root definition'):
             recover_helpers(partial(),{'model':{'tables':[]}},'Total',require_root_match=True)
 
+    def test_function_casing_does_not_block_matching_helper_recovery(self):
+        data=partial();extra=supplement()
+        extra['model']['tables'][0]['measures'][0]['expression']='sumx(Sales,Sales[Amount])+[Helper]'
+        result=recover_helpers(data,extra,'Total',require_root_match=True)
+        self.assertFalse(result.remaining)
+        self.assertEqual(result.model.measure('Total').expression,data['model']['tables'][0]['measures'][0]['expression'])
+
+    def test_string_case_and_changed_numeric_constants_remain_conflicts(self):
+        for before,after in [('"Notice"','"notice"'),('COUNTROWS(Sales)+1','countrows(Sales)+2')]:
+            data=source(before);extra=source(after)
+            with self.assertRaisesRegex(ModelError,'root definition differs'):
+                recover_helpers(data,extra,'Total',require_root_match=True)
+
     def test_ambiguous_incoming_bare_name_is_not_arbitrarily_selected(self):
         data=source('[New helper]')
         extra={'model':{'tables':[{'name':t,'measures':[{'name':'New helper','expression':'1'}]} for t in ['One','Two']]}}

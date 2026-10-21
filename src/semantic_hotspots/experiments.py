@@ -92,6 +92,7 @@ def prepare_rewrite_experiment(bundle, directory, *, top=20, validation_dates=No
                 expanded.append(w)
         for w in expanded:
             definition=query_definitions(owner.table,owner.name,candidate['after'],alias_name,controls,w['as_of'])
+            baseline_definition=query_definitions(owner.table,owner.name,candidate['before'],alias_name,controls,w['as_of'])
             identity = _hash(candidate['id']+'\x00'+w['scenario'])[:20]
             prefix = '__sh_' + identity + '_'
             columns = {key: prefix+key for key in ['original', 'candidate', 'equal', 'original_blank', 'candidate_blank']}
@@ -107,7 +108,9 @@ def prepare_rewrite_experiment(bundle, directory, *, top=20, validation_dates=No
             if w['query'].count(marker) != 1:
                 raise ModelError('Unexpected generated workload projection')
             validation = definition+w['query'].replace(marker, ',\n    '.join(fields))
-            queries = {'validation': validation, 'baseline': (definition if controls else '')+w['query'],
+            queries = {'validation': validation,
+                       'alias_validation': baseline_definition+w['query'].replace(marker, ',\n    '.join(fields)),
+                       'baseline': baseline_definition+w['query'].replace(marker, '"Result", '+alias),
                        'candidate': definition+w['query'].replace(marker, '"Result", '+alias)}
             paths = {}
             for kind, query in queries.items():
@@ -118,6 +121,7 @@ def prepare_rewrite_experiment(bundle, directory, *, top=20, validation_dates=No
                           'measure': candidate['measure'], 'scenario': w['scenario'], 'as_of':w['as_of'], 'columns': columns,
                           'group_by': w['group_by'], 'filters': w['filters'], 'queries': paths})
     manifest = {'schema_version': '1.0', 'kind': 'rewrite-experiment', 'source_model': source['source_model'],
+                'timing_design': 'matched_query_alias',
                 'synthetic_model_name': source['synthetic_model_name'], 'seed': source['seed'],
                 'synthetic_model_sha256': _hash(model_path.read_text(encoding='utf-8')),
                 'simulation_manifest_sha256': _hash((source_root/'simulation.json').read_text(encoding='utf-8')),
@@ -126,7 +130,7 @@ def prepare_rewrite_experiment(bundle, directory, *, top=20, validation_dates=No
                     'Finite synthetic cases are evidence, not universal equivalence or production speed predictions.',
                     'Exact engine equality and explicit BLANK flags are checked; floating-point differences fail conservatively.',
                     'No runtime type metadata, model identity, source latency, RLS, or production capacity validation is inferred.',
-                    'Timing noise is not a statistically established improvement. Candidate aliases may affect engine caching.']}
+                    'Both timing paths define the same query-scoped alias; original-alias binding is validated separately. Timing noise is not a statistically established improvement.']}
     root = _fresh(directory)
     (root/'queries').mkdir()
     for filename, query in files.items():
@@ -168,7 +172,9 @@ def _experiment(directory):
             if set(case['columns']) != {'original', 'candidate', 'equal', 'original_blank', 'candidate_blank'} or len(set(case['columns'].values())) != 5:
                 raise ValueError('Invalid validation columns')
             seen.add(case['id'])
-            for kind in ['validation', 'baseline', 'candidate']:
+            kinds = ['validation', 'baseline', 'candidate']
+            if data.get('timing_design') == 'matched_query_alias':kinds.append('alias_validation')
+            for kind in kinds:
                 query = case['queries'][kind]
                 path = (root/query['file']).resolve()
                 if not path.is_relative_to(root/'queries') or not path.is_file() or path.suffix != '.dax':
@@ -185,6 +191,9 @@ def _experiment(directory):
 
 
 def _validation(path, columns):
+    # SVG/text measures can exceed the csv module's 128 KiB default. Raise
+    # only to a bounded value; never lower an embedding application's limit.
+    csv.field_size_limit(max(csv.field_size_limit(), 16*1024*1024))
     if not path.is_file():
         return {'status': 'not_run', 'rows': 0, 'nonblank_original_rows': 0, 'mismatches': None}
     try:
@@ -220,6 +229,9 @@ def _phases(rows, expected=None):
         values = [r['duration_ms'] for r in attempts if not r['error']]
         phases[cache] = {'attempts': len(attempts), 'successes': len(values),
                          'mean_ms': statistics.mean(values) if values else None,
+                         'median_ms': statistics.median(values) if values else None,
+                         'min_ms': min(values) if values else None,
+                         'max_ms': max(values) if values else None,
                          'complete': bool(attempts) and len(values) == len(attempts)
                                      and expected is not None and len(attempts) == expected[cache]}
     return phases
@@ -250,10 +262,13 @@ class RewriteResults:
             elif validation == 'passed_tested_cases' and not nonblank:
                 performance = 'uninformative_all_blank'
             elif validation == 'passed_tested_cases' and comparisons and all(p['complete'] for p in comparisons):
-                changes = [p['baseline_mean_ms'] - p['candidate_mean_ms'] for p in comparisons]
-                performance = ('observed_improvement' if all(v >= 0 for v in changes) and any(v > 0 for v in changes)
-                               else 'mixed_results' if any(v > 0 for v in changes) and any(v < 0 for v in changes)
-                               else 'no_observed_improvement')
+                observations = [p.get('observation', 'inconclusive') for p in comparisons]
+                performance = ('observed_improvement' if all(v == 'faster' for v in observations)
+                               else 'mixed_results' if 'faster' in observations and 'slower' in observations
+                               else 'no_observed_improvement' if 'slower' in observations or all(p['baseline_mean_ms'] == p['candidate_mean_ms'] for p in comparisons)
+                               else 'inconclusive')
+                if self.manifest.get('timing_design') != 'matched_query_alias':
+                    performance = 'inconclusive_query_scope'
             baseline = [p['baseline_mean_ms'] for p in comparisons if p['baseline_mean_ms'] is not None]
             ranked.append(dict(candidate, validation_status=validation, performance_status=performance,
                                nonblank_original_rows=nonblank, tested_cases=len(cases), expected_cases=len(expected_cases),
@@ -274,8 +289,9 @@ class RewriteResults:
         ranked.sort(key=lambda r: (r['highest_baseline_mean_ms'] is None, -(r['highest_baseline_mean_ms'] or 0)))
         return {'schema_version': '1.0', 'kind': 'rewrite-experiment-results',
                 'interpretation': 'Tested-case equality and observed query durations only; no universal proof, isolated measure cost, significance claim, or production prediction.',
+                'timing_design': self.manifest.get('timing_design', 'legacy_unmatched'),
                 'diagnostics': self.diagnostics,
-                'selection_basis': 'Lowest sum of equally weighted scenario/cache mean durations among candidates with tested-case equality and no observed scenario regression. Not significance-tested or a production workload weighting.',
+                'selection_basis': 'Lowest sum of equally weighted scenario/cache mean durations among candidates with tested-case equality and a clear faster observation in every completed phase: median change above both 10% and 1 ms with nonoverlapping sample ranges. Descriptive, not significance-tested or production-weighted.',
                 'fastest_observed_candidate_ids': {m: v[1] for m, v in fastest.items()},
                 'ranked_candidates': ranked}
 
@@ -347,6 +363,15 @@ def collect_rewrite_results(directory, results_directory, *, trace_verified=Fals
         if runner is not None and (run is None or run.get('returncode') != 0):
             validation['status'] = 'failed' if run else 'not_run'
             validation['error'] = 'Validation process failed or has no runner record'
+        if manifest.get('timing_design') == 'matched_query_alias':
+            binding = _validation(out/f'{identity}-alias_validation.csv', case['columns'])
+            binding_run = runs.get((identity, 'alias_validation'))
+            if runner is not None and (binding_run is None or binding_run.get('returncode') != 0):
+                binding['status'] = 'failed' if binding_run else 'not_run'
+            validation['original_alias_validation'] = binding
+            if binding['status'] != 'passed':
+                validation['status'] = 'failed' if binding['status'] == 'failed' else 'not_run'
+                validation['error'] = 'Original query-scoped alias did not pass binding validation against the saved measure'
         phases, benchmark_rows = {}, {}
         for kind in ['baseline', 'candidate']:
             path = out/f'{identity}-{kind}.csv'
@@ -368,7 +393,13 @@ def collect_rewrite_results(directory, results_directory, *, trace_verified=Fals
                 continue
             b, a = phases['baseline'][cache], phases['candidate'][cache]
             before, after = b['mean_ms'], a['mean_ms']
-            comparisons.append({'cache': cache, 'baseline_mean_ms': before, 'candidate_mean_ms': after,
+            observation = 'inconclusive'
+            if b['complete'] and a['complete']:
+                delta = a['median_ms'] - b['median_ms']
+                if abs(delta) > max(1, b['median_ms']*.1):
+                    if a['max_ms'] < b['min_ms']:observation = 'faster'
+                    elif a['min_ms'] > b['max_ms']:observation = 'slower'
+            comparisons.append({'cache': cache, 'observation': observation, 'baseline_mean_ms': before, 'candidate_mean_ms': after,
                                 'change_percent': (before-after)/before*100 if before and after is not None else None,
                                 'baseline_iterations': b, 'candidate_iterations': a,
                                 'complete': b['complete'] and a['complete']})
@@ -399,7 +430,7 @@ def run_rewrite_experiment(directory, *, server, database, dscmd=None, engine='a
                'timeout': timeout, 'runs': []}
     def run(case, kind):
         output = out/f'{case["id"]}-{kind}.csv'
-        command = runner.command('csv' if kind == 'validation' else 'benchmark', output,
+        command = runner.command('csv' if kind in {'validation','alias_validation'} else 'benchmark', output,
                                  root/case['queries'][kind]['file'], cold=cold, warm=warm, timeout=timeout)
         try:
             process = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, check=False)
@@ -415,6 +446,11 @@ def run_rewrite_experiment(directory, *, server, database, dscmd=None, engine='a
         success = run(case, 'validation')
         evidence = _validation(out/f'{case["id"]}-validation.csv', case['columns'])
         validation[case['id']] = evidence if success else dict(evidence, status='failed')
+        if manifest.get('timing_design') == 'matched_query_alias':
+            binding_success = run(case, 'alias_validation')
+            binding = _validation(out/f"{case['id']}-alias_validation.csv", case['columns'])
+            if not binding_success or binding['status'] != 'passed':
+                validation[case['id']]['status'] = 'failed'
     for candidate in manifest['candidates']:
         cases = [c for c in manifest['cases'] if c['candidate_id'] == candidate['id']]
         if (not all(validation[c['id']]['status'] == 'passed' for c in cases)

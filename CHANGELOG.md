@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.19.0
+
+- Add narrowly guarded constant-one counting iterators and row-invariant direct-count proposals. Preserve empty-input BLANK behavior, qualify moved column bindings, and retain context-transition and outer-row-context guards.
+- Allow function/keyword casing differences when anchoring helper recovery; string literals and changed constants remain conflicts.
+- Retain single-underscore VAR identifiers, decimal/scientific numeric source spans, COUNTX row scopes and DATEDIFF interval structure in the partial logical representation.
+- Prepare experiment timing paths with the same query-scoped alias. Validate the original alias against the saved measure separately; alias mismatches or missing binding evidence withhold timings and performance claims.
+- Require a median improvement above both 10% and 1 ms with nonoverlapping ranges in every completed phase before selecting an experiment winner. Small/overlapping gains and legacy unmatched query scopes remain inconclusive.
+- Read large quoted text/SVG validation cells with a bounded 16 MiB CSV field limit instead of treating the default 128 KiB transport limit as a DAX failure.
+- Extend public-model evaluation with 20 additional reports, including representative matrix subtotal probes. Keep unchanged, failed and inconclusive cases visible; no speedup follows from syntax simplification alone.
+
 ## 0.18.1
 
 - Qualify a bound bare iterator column when removing SUMX, so SUM cannot rebind the name to a different column in the measure home table. Add a cross-table name-collision regression. Existing corpus proposals are unchanged.

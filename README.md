@@ -10,7 +10,7 @@ Python 3.10 or later is required. Create a virtual environment, then install the
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.18.1/semantic_hotspots-0.18.1-py3-none-any.whl"
+.\.venv\Scripts\python.exe -m pip install "https://github.com/Samnor/semantic-hotspots/releases/download/v0.19.0/semantic_hotspots-0.19.0-py3-none-any.whl"
 .\.venv\Scripts\python.exe -m semantic_hotspots --version
 ```
 
@@ -19,7 +19,7 @@ On macOS or Linux, use `.venv/bin/python` instead. No activation, compiler, Git 
 For a source installation, with Git installed:
 
 ```shell
-python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.18.1"
+python -m pip install "git+https://github.com/Samnor/semantic-hotspots.git@v0.19.0"
 ```
 
 To develop from a checkout, use `python -m pip install -e .` from the repository root. DAX execution requires a separately installed engine and client libraries; parsing, analysis, reports, and mock-data generation run locally without them.
@@ -359,7 +359,7 @@ Choose fact row counts, distinct dimension keys, category distributions, date wi
 Install the optional client extra into the same virtual environment. The package is not on PyPI; use the released wheel with its extra:
 
 ```powershell
-python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.18.1/semantic_hotspots-0.18.1-py3-none-any.whl"
+python -m pip install "semantic-hotspots[engine] @ https://github.com/Samnor/semantic-hotspots/releases/download/v0.19.0/semantic_hotspots-0.19.0-py3-none-any.whl"
 python -m semantic_hotspots engine-sessions
 python -m semantic_hotspots benchmark synthetic-lab --server localhost:PORT --database DATABASE --warm 3
 python -m semantic_hotspots experiment-run rewrite-experiment --server localhost:PORT --database DATABASE --warm 5
@@ -429,7 +429,11 @@ The M import follows [Microsoft's Csv.Document documentation](https://learn.micr
 
 Version 0.4 adds an optimizer-inspired proposal layer. The ordinary `analyze` report includes **Guarded rewrite proposals** under each measure: before/after DAX, typed partial logical trees, row/filter context annotations, direct dependencies, guard conditions, and replayable isolated or combined edit steps. `rewrite-plan.json` sits beside the report. Existing risk points remain review priorities, not an optimizer cost model.
 
-The rule registry is deliberately small:
+The rule registry is deliberately small. New experiment bundles time both paths through the same temporary measure alias and validate the original alias against the saved measure separately before timing. Older bundles retain their recorded query design; regenerate them for the matched comparison.
+
+An experiment winner additionally needs a median change above both 10% and 1 ms and nonoverlapping sample ranges in every completed phase. Small or overlapping gains remain inconclusive; this is a descriptive rule, not a statistical significance test.
+
+The available rules are:
 
 | Rule | Proposed change | Conditions |
 |---|---|---|
@@ -440,8 +444,10 @@ The rule registry is deliberately small:
 | OPT005 | Specialize improved helper paths into one new root | Complete supported changed paths; explicit CALCULATE per transplanted measure call; qualified model bindings; original helpers unchanged; bounded expansion |
 | OPT006 | Guarded numeric division → DIVIDE | Exact numeric operands and matching denominator; explicit BLANK alternate; floating-point operands retained |
 | OPT007 | Repeated denominator → local VAR | Same guard, exact numeric operands, fresh local name, original IF and division operator retained |
+| OPT008 | `SUMX(t,1)` / `COUNTX(t,1)` → `COUNTROWS(t)` | Literal integer one; table expression and scopes retained exactly; empty input remains BLANK |
+| OPT009 | `SUMX(T,COUNT(T[C]))` → `COUNTROWS(T)*COUNT(T[C])` | Physical same-table direct count; no measure callback, CALCULATE or enclosing row context; integer counts only |
 
-Recognized logical operations include scans, scoped physical/extension columns, measure references, lexical scalar/table variables, literals, parentheses, scalar binary operators, `SUM`, `SUMX`, `FILTER`, `VALUES`, `ADDCOLUMNS`, paired-name `SELECTCOLUMNS`, `COUNTROWS`, `ISEMPTY`, `MAX`/`MIN`, `YEAR`/`DATE`, `SWITCH`, `IF`, Boolean/blank tests, `DIVIDE`, and `CALCULATE`/`REMOVEFILTERS`. Temporary-column DAG references link to explicit definition nodes. Existing rewrites can run inside supported extension expressions without moving their row/filter context. This is **not a full DAX AST/compiler or executable physical planner**. Unknown table schemas, unsupported calls, ambiguous references, cycles, calculation groups, model functions and dynamic root formats retain their guards. Independently guarded root-local rewrites can preserve known-but-undefined helpers and unknown surrounding column types without inferring their behavior. Those proposals remain unvalidated; actual helper definitions are required before comparison queries are exported. TODAY stays live in production and is frozen only in validation queries; NOW and random evaluation remain blocked. No variable hoisting, join reordering, general filter pushdown, automatic pre-aggregation or runtime plan fusion is implemented. The search emits at most 32 isolated proposals and a 16-step bounded fixed-point combination per measure. No timing benefit is inferred: the DAX engine may already normalize the alternatives.
+Recognized logical operations include scans, scoped physical/extension columns, measure references, lexical scalar/table variables, literals, parentheses, scalar binary operators, `SUM`, `SUMX`, `COUNTX`, `DATEDIFF` with a recognized interval, `FILTER`, `VALUES`, `ADDCOLUMNS`, paired-name `SELECTCOLUMNS`, `COUNTROWS`, `ISEMPTY`, `MAX`/`MIN`, `YEAR`/`DATE`, `SWITCH`, `IF`, Boolean/blank tests, `DIVIDE`, and `CALCULATE`/`REMOVEFILTERS`. Temporary-column DAG references link to explicit definition nodes. Existing rewrites can run inside supported extension expressions without moving their row/filter context. This is **not a full DAX AST/compiler or executable physical planner**. Unknown table schemas, unsupported calls, ambiguous references, cycles, calculation groups, model functions and dynamic root formats retain their guards. Independently guarded root-local rewrites can preserve known-but-undefined helpers and unknown surrounding column types without inferring their behavior. Those proposals remain unvalidated; actual helper definitions are required before comparison queries are exported. TODAY stays live in production and is frozen only in validation queries; NOW and random evaluation remain blocked. No general variable hoisting, join reordering, general filter pushdown, automatic pre-aggregation or runtime plan fusion is implemented. The search emits at most 32 isolated proposals and a 16-step bounded fixed-point combination per measure. No timing benefit is inferred: the DAX engine may already normalize the alternatives.
 
 ```python
 from semantic_hotspots import analyze, plan_rewrites
@@ -676,7 +682,7 @@ The rule text was checked against these primary sources. Examples and advice are
 - [Storage modes](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-storage-mode)
 - [INFO.CALCDEPENDENCY](https://learn.microsoft.com/en-us/dax/info-calcdependency-function-dax)
 
-MIT licensed. Version 0.18.1.
+MIT licensed. Version 0.19.0.
 
 ## Contributing and data handling
 
