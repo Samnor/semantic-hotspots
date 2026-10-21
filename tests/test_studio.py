@@ -280,6 +280,7 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(self.request('GET',result['created']['dax'],headers=self.headers)[0],200)
         status,body,_=self.request('GET',result['created']['query'],headers=self.headers)
         self.assertEqual(status,200)
+        body=body.replace(b'\r\n',b'\n')
         self.assertIn(b'DEFINE\n    MEASURE ',body)
         self.assertIn(b'EVALUATE\nROW("Value", ',body)
         self.assertIn(b'scalar preview only',body)
