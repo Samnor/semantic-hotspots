@@ -49,6 +49,9 @@ class MatrixSpec:
     context_complete: bool = False
     unsupported: list = field(default_factory=list)
     source: str = ''
+    report_name: str = ''
+    page_name: str = ''
+    visual_id: str = ''
 
     @classmethod
     def from_dict(cls, raw):
@@ -71,6 +74,8 @@ class MatrixSpec:
                 raise ModelError(f'{key} must be Boolean')
         if not isinstance(spec.unsupported,list) or not all(isinstance(x,str) for x in spec.unsupported) or not isinstance(spec.source,str):
             raise ModelError('Matrix unsupported/source metadata is malformed')
+        if any(not isinstance(getattr(spec,key),str) for key in ['report_name','page_name','visual_id']):
+            raise ModelError('Matrix report, page and visual labels must be strings')
         _filters(spec.filters)
         if not isinstance(spec.drill_states,list):
             raise ModelError('drill_states must be a list')
@@ -146,6 +151,25 @@ def _pbir_has_filters(raw):
     return bool(filters)
 
 
+def _pbir_title(visual):
+    """Read a literal title only; never evaluate a dynamic title expression."""
+    objects=visual.get('visualContainerObjects')
+    titles=objects.get('title') if isinstance(objects,dict) else None
+    if not isinstance(titles,list):return ''
+    for title in titles:
+        properties=title.get('properties') if isinstance(title,dict) else None
+        show=properties.get('show') if isinstance(properties,dict) else None
+        for key in ['expr','Literal','Value']:
+            show=show.get(key) if isinstance(show,dict) else None
+        if show=='false':continue
+        value=properties.get('text') if isinstance(properties,dict) else None
+        for key in ['expr','Literal','Value']:
+            value=value.get(key) if isinstance(value,dict) else None
+        if isinstance(value,str) and len(value)>=2 and value.startswith("'") and value.endswith("'"):
+            return value[1:-1].replace("''", "'").strip()
+    return ''
+
+
 def _read_pbir(path):
     if path.is_file():
         visual_paths=[path]
@@ -171,8 +195,19 @@ def _read_pbir(path):
                     if col and col not in slicers:slicers.append(col)
         if visual.get('visualType') != 'pivotTable':
             continue
-        page=file.parents[2].name if file.name=='visual.json' and len(file.parents)>2 else 'page'
-        spec={'id':page+'/'+str(raw.get('name',file.parent.name)), 'title':str(raw.get('name',file.parent.name)),
+        page_folder=file.parents[2] if file.parent.parent.name=='visuals' else None
+        page=page_folder.name if page_folder else 'page'
+        page_metadata=page_folder/'page.json' if page_folder else None
+        page_label=page
+        if page_metadata and page_metadata.is_file():
+            metadata=json.loads(page_metadata.read_text(encoding='utf-8-sig'))
+            if isinstance(metadata,dict) and isinstance(metadata.get('displayName'),str):
+                page_label=metadata['displayName'] or page
+        report_folder=report_root.parent if report_root and report_root.name=='definition' else report_root
+        visual_id=str(raw.get('name',file.parent.name))
+        spec={'id':page+'/'+visual_id, 'title':_pbir_title(visual) or visual_id,
+              'report_name':report_folder.name.removesuffix('.Report') if report_folder else '',
+              'page_name':page_label if page_folder else '', 'visual_id':visual_id,
               'rows':[], 'columns':[], 'values':[], 'source':str(file), 'unsupported':[], 'context_complete':False}
         query,roles=_pbir_query(visual)
         for role, target in [('Rows','rows'),('Columns','columns'),('Values','values')]:

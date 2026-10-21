@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0
+
+- Limit Studio’s optional visual picker to matrices that directly display the selected measure, with the same binding check on the server. Select one visual or continue without any.
+- Preserve report/page names and literal PBIR visual titles; disambiguate duplicate labels with stable IDs. Add optional report_name, page_name and visual_id display metadata to matrix specifications.
+- Replace the raw context preview with readable axes, filters and totals, plus an explicit Remove visual context action and helpful no-matching-visual state.
+- Keep local measure/search changes intact across polling instead of restoring a previous completed selection. Include a matching iterator matrix in the fictional demo.
+
 ## 0.11.0
 
 - Make Studio measure-first, deferring rewrite checks until selection and moving matrices into an optional landing-visual choice with no automatic selection.

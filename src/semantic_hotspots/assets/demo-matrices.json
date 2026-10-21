@@ -2,6 +2,16 @@
   "schema_version": "1.0",
   "matrices": [
     {
+      "id": "iterator-review",
+      "title": "Revenue iterator by month",
+      "page_name": "Measure examples",
+      "report_name": "Synthetic demo",
+      "values": [["Sales", "Revenue iterator"]],
+      "rows": [["Customer", "Region"]],
+      "columns": [["Calendar", "Month"]],
+      "context_complete": true
+    },
+    {
       "id": "monthly-margin",
       "title": "Monthly revenue and margin",
       "rows": [

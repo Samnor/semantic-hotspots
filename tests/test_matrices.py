@@ -228,6 +228,38 @@ class PbirMatrixTests(unittest.TestCase):
             candidate=analyze_matrices(model(),specs).matrices[0]['grain_advice']['candidates'][0]
             self.assertEqual(candidate['status'],'needs_review')
 
+    def test_pbir_preserves_literal_titles_page_labels_and_stable_visual_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report=Path(tmp)/'Example.Report'
+            path=report/'definition/pages/pageA/visuals/one/visual.json';path.parent.mkdir(parents=True)
+            (path.parents[2]/'page.json').write_text(json.dumps({'displayName':'Sales overview'}))
+            raw=self.visual()
+            raw['visual']['visualContainerObjects']={'title':[{'properties':{'text':{'expr':{'Literal':{'Value':"'Customer''s revenue <view>'"}}}}}]}
+            path.write_text(json.dumps(raw));spec=load_matrices(report)[0]
+            self.assertEqual(spec.id,'pageA/example-matrix');self.assertEqual(spec.visual_id,'example-matrix')
+            self.assertEqual(spec.title,"Customer's revenue <view>")
+            self.assertEqual(spec.page_name,'Sales overview');self.assertEqual(spec.report_name,'Example')
+            # A dynamic/hidden/malformed title is never evaluated as DAX or used for binding.
+            raw['visual']['visualContainerObjects']['title'][0]['properties']['show']={'expr':{'Literal':{'Value':'false'}}}
+            path.write_text(json.dumps(raw))
+            self.assertEqual(load_matrices(report)[0].title,'example-matrix')
+            raw['visual']['visualContainerObjects']['title'][0]['properties']['text']={'expr':{'Measure':{'Property':'Title measure'}}}
+            del raw['visual']['visualContainerObjects']['title'][0]['properties']['show']
+            path.write_text(json.dumps(raw))
+            self.assertEqual(load_matrices(report)[0].title,'example-matrix')
+            raw['visual']['visualContainerObjects']={'title':[None,{'properties':[]}]}
+            path.write_text(json.dumps(raw));self.assertEqual(load_matrices(report)[0].title,'example-matrix')
+            (path.parents[2]/'page.json').write_text(json.dumps({'displayName':None}))
+            self.assertEqual(load_matrices(report)[0].page_name,'pageA')
+
+    def test_optional_labels_round_trip_and_validate_without_changing_context(self):
+        from semantic_hotspots import MatrixSpec
+        raw=matrix(report_name='Example',page_name='Overview',visual_id='one')
+        spec=MatrixSpec.from_dict(raw)
+        self.assertEqual(MatrixSpec.from_dict(spec.to_dict()).page_name,'Overview')
+        for key in ['report_name','page_name','visual_id']:
+            with self.subTest(key=key),self.assertRaises(ModelError):MatrixSpec.from_dict(dict(raw,**{key:None}))
+
     def test_filters_implicit_measures_and_extra_roles_are_withheld(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'visual.json';raw=self.visual();raw['filterConfig']={'filters':[{'name':'unknown-filter'}]}

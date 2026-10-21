@@ -42,6 +42,22 @@ _ACTIONS = {'inspect': 'Analyze model', 'demo': 'Analyze synthetic demo', 'matri
             'measure-proposal':'Compare proposed measure'}
 
 
+def _matrix_measure_ids(model, spec):
+    """Bound value slots only: helpers and visual filter measures are not slots."""
+    result=[]
+    for table,name in spec.values:
+        try:owner=model.measure(name,table)
+        except ModelError:continue
+        if owner.id not in result:result.append(owner.id)
+    return result
+
+
+def _label_matrix_choices(choices):
+    labels=[' / '.join(x for x in [c['spec']['report_name'],c['spec']['page_name'],c['title']] if x) for c in choices]
+    for choice,label in zip(choices,labels):
+        choice['visual_label']=label+(' · '+choice['id'] if labels.count(label)>1 else '')
+
+
 class Studio:
     def __init__(self, workspace, output):
         self.workspace = Path(workspace).resolve()
@@ -170,7 +186,10 @@ class Studio:
                     _select_analysis(self.model, matrix_analysis, row['id'])
                 except ModelError as exc:
                     eligible, reason = False, str(exc)
-                choices.append({**row, 'eligible': eligible, 'blocked_reason': reason})
+                spec=next(s for s in self.specs if s.id==row['id'])
+                choices.append({**row, 'eligible': eligible, 'blocked_reason': reason,
+                                'measure_ids':_matrix_measure_ids(self.model,spec)})
+            _label_matrix_choices(choices)
             suffixes = [c['id'].rsplit('/',1)[-1] for c in choices]
             for choice in choices:
                 suffix = choice['id'].rsplit('/',1)[-1]
@@ -244,6 +263,8 @@ class Studio:
                 spec = next((s for s in self.specs if s.id == data['id']), None)
                 if spec is None:
                     raise ModelError('Choose an existing matrix')
+                if data.get('measure') and self.model.measure(data['measure']).id not in _matrix_measure_ids(self.model,spec):
+                    raise ModelError('Choose a matrix that directly displays the selected measure')
                 raw = spec.to_dict()
                 # Keep every unsupported flag/filter/retained dimension intact.
                 raw['context_complete'] = True
@@ -272,6 +293,8 @@ class Studio:
             if landing_id:
                 landing=next((s for s in self.specs if s.id==landing_id),None)
                 if landing is None:raise ModelError('Choose an existing optional landing matrix')
+                if self.model.measure(selected).id not in _matrix_measure_ids(self.model,landing):
+                    raise ModelError('Choose a matrix that directly displays the selected measure, or continue without visual context')
             review=review_measure(self.model,selected,analysis=self.analysis,progress=self.report,landing_matrix=landing)
             key,root=self.new_artifact()
             emit(self.report,'measure','Review selected measure',detail='Write this measure’s proposals and dependency chain')
