@@ -69,9 +69,21 @@ def date_controls(model, owner, expression=None, *, dates=None, graph=None):
         if not any(d['id']==owner.id for d in definitions):
             definitions.append({'id':owner.id,'table':owner.table,'name':owner.name,'expression':owner.expression})
     if not definitions and not blocked:return None
+    if definitions:
+        clocks={d['id'] for d in definitions}
+        # A query-scoped helper override does not replace references already
+        # compiled into a stored caller. Re-declare every affected caller and
+        # both roots, without inlining or changing the production definitions.
+        affected={owner.id,*clocks}
+        affected.update(n for n in wanted if model.entities[n].kind=='measure'
+                        and clocks.intersection(graph.dependency_ids(n)))
+        order=list(dict.fromkeys([*graph.order,*sorted(affected)]))
+        definitions=[{'id':n,'table':model.entities[n].table,'name':model.entities[n].name,
+                      'expression':model.entities[n].expression} for n in order
+                     if n in affected and model.entities[n].expression]
     return {'kind':'fixed-as-of-dates','dates':requested,'definitions':definitions,
             'blocked_reasons':blocked,'production_today_preserved':True,
-            'scope':'Query-scoped overrides of the original, candidate and date-dependent helpers only. Stored data is not refreshed or changed. Finite dates are not universal equivalence evidence.'}
+            'scope':'Query-scoped overrides of the original, candidate, clock measures and their affected callers. Stored data is not refreshed or changed. Finite dates are not universal equivalence evidence.'}
 
 
 def query_definitions(table, name, expression, alias, controls=None, as_of=None):

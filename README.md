@@ -50,11 +50,11 @@ This explicit action downloads the pinned official Microsoft ADOMD 19.118.3 pack
 
 Studio binds only to `127.0.0.1`, uses a session token and same-origin POST checks, and serves only registered generated artifacts. Model/source data is not uploaded; the SDK setup button is the explicit external download. Generated files remain under `.semantic-hotspots-ui` by default. Use `-o OUTPUT` to choose another directory, `--no-browser` to print the local URL, and Ctrl+C to stop the server. The GUI is local; it is not a multi-user hosted service.
 
-The guided runner is covered by synthetic orchestration, HTTP and browser-flow checks. Its engine workflow has not yet been rerun end-to-end in live Desktop. The earlier Windows integration check below exercised the exporter and direct-client foundations with manual orchestration.
+Guided workflows have automated orchestration, HTTP and desktop/mobile browser checks. Live engine integration evidence is bounded to the fictional scenarios described below; CI does not launch Power BI Desktop or execute DAX.
 
 ### Date-dependent measures and missing helpers
 
-`TODAY()` is not a blanket rewrite blocker. Created measures keep their live clock. The package includes `date-controls.json` and separate `validation-dates/YYYY-MM-DD/` queries that override the original, candidate, and date-dependent helper measures for that query only. Defaults cover today, this month’s boundaries, and this year’s boundaries. Add the relevant planning-period and leap-day dates yourself. These finite comparisons do not establish universal equivalence or speedup. Stored calculated tables/columns using a clock cannot be frozen by measure overrides.
+`TODAY()` is not a blanket rewrite blocker. Created measures keep their live clock. The package includes `date-controls.json` and separate `validation-dates/YYYY-MM-DD/` queries that override the original, candidate, and date-dependent helper measures and their callers for that query only. Stored callers are re-declared because a helper override alone does not replace already-compiled references. Defaults cover today, this month’s boundaries, and this year’s boundaries. Add the relevant planning-period and leap-day dates yourself. These finite comparisons do not establish universal equivalence or speedup. Stored calculated tables/columns using a clock cannot be frozen by measure overrides.
 
 ```powershell
 python -m semantic_hotspots create-measure model.bim "Selected measure" --table Measures --as-of 2024-02-29 --as-of 2025-01-01 --definitions matching-export.bim -o measure-review

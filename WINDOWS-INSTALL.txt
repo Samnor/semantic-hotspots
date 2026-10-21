@@ -30,6 +30,19 @@ To create a new measure after Analyze model:
   In the bundled demo, choose Sales / Revenue iterator for a simplification.
   Generated queries are unexecuted; test correctness and timings before use.
 
+For TODAY-dependent measures:
+  The production measure keeps TODAY(). Validation dates (optional) lets you
+  choose fixed dates; the full package has separate validation-dates folders.
+  Both roots and the complete date-dependent helper/caller path are overridden
+  for those queries only. Add relevant planning-period boundaries.
+
+If helper definitions are missing:
+  Expand Recover missing helper definitions. Import a matching BIM/TMDL export,
+  or find open Desktop models and explicitly select the matching source model.
+  Live metadata recovery requires [engine] and the official client below.
+  Independent local proposals can proceed; validation waits for real definitions.
+  No helper formulas are guessed and no source model is changed.
+
 For Windows matrix DAX validation, install the [engine] extra below, then click the
 explicit official-client setup button in Studio or run engine-setup. Open and
 refresh the generated project in Power BI Desktop, find the loaded models,

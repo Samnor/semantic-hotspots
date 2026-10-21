@@ -43,7 +43,22 @@ class DateControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             query=(result.write(Path(tmp)/'new')['html'].parent/'validate-total.dax').read_text()
             self.assertIn("MEASURE 'Sales'[Clock]",query)
-            self.assertNotIn("MEASURE 'Sales'[Total] =",query)
+            self.assertIn("MEASURE 'Sales'[Total] =",query)
+
+    def test_stored_callers_are_rebound_along_the_entire_clock_dependency_path(self):
+        data=source('SUMX(Sales,Sales[Amount])+[Middle]')
+        data['model']['tables'][0]['measures'].extend([
+            {'name':'Middle','expression':'[Nested] + 1'},
+            {'name':'Nested','expression':'[Clock] + 1'},
+            {'name':'Clock','expression':'YEAR(TODAY())'},
+            {'name':'Other','expression':'1'}])
+        created=create_measure(data,'Total',validation_dates=['2024-02-29'])
+        self.assertEqual({d['name'] for d in created.data['date_controls']['definitions']},{'Clock','Nested','Middle','Total'})
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/'new';created.write(root);query=(root/'validate-total.dax').read_text()
+            for name in ['Clock','Nested','Middle','Total','Total (candidate)']:
+                self.assertIn("MEASURE 'Sales'["+name+"] =",query)
+            self.assertNotIn("MEASURE 'Sales'[Other]",query)
 
     def test_missing_known_helper_kept_opaque_without_blocking_local_stored_filter_rule(self):
         text=stored('[Empty]');data=source(text);data['model']['tables'][0]['measures'].append({'name':'Empty'})
