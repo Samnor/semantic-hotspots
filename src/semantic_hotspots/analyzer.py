@@ -17,8 +17,9 @@ from .model import Model, ModelError
 from .parser import load_model, parse_model
 from .profile import RuntimeProfile
 from .rules import inspect_expression, relationship_findings
+from .progress import emit
 
-VERSION = '0.9.0'
+VERSION = '0.9.1'
 SCORE_DESCRIPTION = (
     'Ordinal review priority, not elapsed time, engine work, row scans or CU. '
     'Each nonempty expression starts at 1 point; named rules add their documented points. '
@@ -56,7 +57,7 @@ class Analysis:
             Path(path).write_text(text, encoding='utf-8')
         return text
 
-    def write(self, directory: str | Path) -> dict[str, Path]:
+    def write(self, directory: str | Path, *, progress=None) -> dict[str, Path]:
         """Write JSON, self-contained HTML and one reusable dependency graph per measure."""
         from .report import render_html
         root = Path(directory)
@@ -64,7 +65,9 @@ class Analysis:
         graphs = root / 'chains'
         graphs.mkdir(exist_ok=True)
         index = {}
-        for m in self.model.measures:
+        emit(progress, 'reports', 'Write reports', completed=0, total=len(self.model.measures), unit='measure chains')
+        for i, m in enumerate(self.model.measures, 1):
+            emit(progress, 'reports', 'Write reports', completed=i-1, total=len(self.model.measures), unit='measure chains', detail=m.qualified_name)
             slug = re.sub(r'[^a-zA-Z0-9_-]+', '-', m.name).strip('-')[:65] or 'unnamed'
             filename = f'measure-{slug}-{hashlib.sha256(m.id.encode()).hexdigest()[:12]}.json'
             (graphs / filename).write_text(json.dumps(self.graph.to_dict(m.id), ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
@@ -72,9 +75,11 @@ class Analysis:
         (root / 'chain-index.json').write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         if self.rewrite_plan:
             from .comparison import write_candidate_dags
-            write_candidate_dags(self.rewrite_plan.candidates, root/'dag-comparisons')
+            write_candidate_dags(self.rewrite_plan.candidates, root/'dag-comparisons', progress=progress)
+            emit(progress, 'reports', 'Write reports', detail='Save rewrite proposals and analysis JSON')
             (root / 'rewrite-plan.json').write_text(json.dumps(self.rewrite_plan.to_dict(), ensure_ascii=False, indent=2, allow_nan=False) + '\n', encoding='utf-8')
         self.to_json(root / 'analysis.json')
+        emit(progress, 'reports', 'Write reports', detail='Render the findings and DAG comparison report')
         (root / 'report.html').write_text(render_html(self, index), encoding='utf-8')
         files = {'json': root / 'analysis.json', 'html': root / 'report.html', 'chain_index': root / 'chain-index.json'}
         if self.rewrite_plan:
@@ -83,18 +88,23 @@ class Analysis:
 
 
 def analyze(model: Model | str | Path | dict, *, profile: RuntimeProfile | None = None,
-            rank_by: str | None = None) -> Analysis:
+            rank_by: str | None = None, progress=None) -> Analysis:
+    emit(progress, 'load', 'Read model', detail='Read semantic model metadata')
     if isinstance(model, dict):
         model = parse_model(model)
     elif not isinstance(model, Model):
         model = load_model(model)
-    graph = DependencyGraph(model)
+    graph = DependencyGraph(model, progress=progress)
     warnings = list(dict.fromkeys(model.warnings + graph.diagnostics))
     if graph.cycles:
         warnings.append('Dependency cycles found. Blocked measures have no acyclic risk score or evaluation order; see cycle_witnesses.')
     if any(e.kind == 'calculation_item' for e in model.entities.values()):
         warnings.append('Calculation groups are present. Their runtime application/precedence is not inferred from a model file alone.')
-    findings = {n: inspect_expression(model.entities[n], info, model) for n, info in graph.syntax.items()}
+    findings = {}
+    emit(progress, 'ranking', 'Review measures', completed=0, total=len(graph.syntax), unit='expressions', detail='Check expression rules and measure chains')
+    for i, (n, info) in enumerate(graph.syntax.items(), 1):
+        emit(progress, 'ranking', 'Review measures', completed=i-1, total=len(graph.syntax), unit='expressions', detail='Check rules: '+model.entities[n].qualified_name)
+        findings[n] = inspect_expression(model.entities[n], info, model)
     local = {n: (1 if model.entities[n].expression else 0) + sum(f.points for f in findings.get(n, [])) for n in graph.ids}
     path_scores = {}
     for n in graph.order:
@@ -125,7 +135,8 @@ def analyze(model: Model | str | Path | dict, *, profile: RuntimeProfile | None 
         raise ModelError('Runtime ranking requires RuntimeProfile; static complexity cannot supply measured CPU/CU')
     ranked = []
     measure_mask = sum(1 << graph.index[m.id] for m in model.measures)
-    for measure in model.measures:
+    for i, measure in enumerate(model.measures, 1):
+        emit(progress, 'ranking', 'Review measures', completed=i-1, total=len(model.measures), unit='measures', detail='Rank chain: '+measure.qualified_name)
         bits = graph.mask(measure.id)
         transitive_count = (bits & measure_mask).bit_count() - 1
         context_findings, context = relationship_findings(measure.id, graph)
@@ -159,5 +170,5 @@ def analyze(model: Model | str | Path | dict, *, profile: RuntimeProfile | None 
         return (value is None, -(value or 0), item['id'])
     ranked.sort(key=sort_key)
     from .optimizer import plan_rewrites
-    rewrites = plan_rewrites(model, graph=graph, ranked_ids=[r['id'] for r in ranked])
+    rewrites = plan_rewrites(model, graph=graph, ranked_ids=[r['id'] for r in ranked], progress=progress)
     return Analysis(model, graph, ranked, rank_by, list(dict.fromkeys(warnings)), profile, rewrites)

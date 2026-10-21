@@ -62,6 +62,11 @@ def _quoted(value):
 
 def _selection(model, matrices, matrix_id):
     analysis=analyze_matrices(model,matrices)
+    return _select_analysis(model,analysis,matrix_id)
+
+
+def _select_analysis(model, analysis, matrix_id):
+    """Apply the same export guards to an already computed matrix analysis."""
     rejected=[]
     for row in analysis.matrices:
         if matrix_id is not None and row['id']!=matrix_id:continue

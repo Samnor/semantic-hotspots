@@ -351,7 +351,9 @@ def write_dag_comparison(comparison, directory):
     return {'json':dump('comparison.json',comparison),'html':root/'report.html'}
 
 
-def write_candidate_dags(candidates, directory):
-    for c in candidates:
+def write_candidate_dags(candidates, directory, *, progress=None):
+    from .progress import emit
+    for i, c in enumerate(candidates, 1):
+        emit(progress, 'reports', 'Write reports', completed=i-1, total=len(candidates), unit='DAG comparisons', detail=c['measure'])
         if c.get('dag_comparison'):
             write_dag_comparison(c['dag_comparison'],Path(directory)/c['id'])

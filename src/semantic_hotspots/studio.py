@@ -10,6 +10,7 @@ import secrets
 import sys
 import tempfile
 import threading
+import time
 import webbrowser
 import zipfile
 from http.cookies import SimpleCookie
@@ -23,10 +24,20 @@ from .engine import desktop_sessions, query_to_csv
 from .matrices import analyze_matrices, load_matrices, MatrixSpec
 from .model import ModelError
 from .parser import load_model
-from .project import export_project, _selection
+from .project import export_project, _select_analysis
 from .showcase import run_showcase, _rows, _tokens
 from .performance import read_performance_analyzer
 from .client_setup import install_adomd
+from .progress import emit
+
+
+_ANALYSIS_STAGES = [('load', 'Read model'), ('dependencies', 'Trace dependencies'),
+                    ('ranking', 'Review measures'), ('rewrites', 'Check rewrite proposals'),
+                    ('matrices', 'Review matrix grains'), ('reports', 'Write reports')]
+_ACTIONS = {'inspect': 'Analyze model', 'demo': 'Analyze synthetic demo', 'matrix': 'Review matrix',
+            'generate': 'Build comparison', 'open': 'Open in Power BI Desktop',
+            'discover': 'Find Desktop models', 'setup-client': 'Install official client',
+            'run': 'Validate and benchmark'}
 
 
 class Studio:
@@ -42,7 +53,8 @@ class Studio:
                       'model': None, 'matrices': [], 'measures': [], 'sessions': [], 'project': None,
                       'result': None, 'windows': sys.platform == 'win32',
                       'pythonnet': importlib.util.find_spec('pythonnet') is not None,
-                      'workspace': str(self.workspace)}
+                      'workspace': str(self.workspace), 'operation': None}
+        self._started = self._stage_started = self._updated = self._finished = None
         self.model = None
         self.specs = []
         self.config = {}
@@ -51,11 +63,45 @@ class Studio:
 
     def snapshot(self):
         with self.lock:
-            return copy.deepcopy(self.state)
+            snapshot = copy.deepcopy(self.state)
+            if snapshot['operation'] is not None:
+                now = self._finished if self._finished is not None else time.monotonic()
+                snapshot['operation'].update(elapsed_seconds=max(0, now-self._started),
+                                             stage_elapsed_seconds=max(0, now-self._stage_started),
+                                             seconds_since_update=max(0, now-self._updated))
+            return snapshot
 
     def change(self, **values):
         with self.lock:
             self.state.update(values)
+
+    def report(self, event):
+        """Record actual worker checkpoints; polling does not advance progress."""
+        with self.lock:
+            self.state['progress'] = event['label']
+            operation = self.state['operation']
+            if operation is None or operation['status'] != 'running':
+                return
+            now = time.monotonic()
+            if event['stage'] != operation['stage']:
+                for stage in operation['stages']:
+                    if stage['status'] == 'running':
+                        stage.update(status='completed', elapsed_seconds=now-self._stage_started)
+                self._stage_started = now
+            if not any(s['id'] == event['stage'] for s in operation['stages']):
+                operation['stages'].append({'id': event['stage'], 'label': event['label'], 'status': 'pending'})
+            for stage in operation['stages']:
+                if stage['id'] == event['stage']:
+                    stage['status'] = 'running'
+            operation.update(event)
+            self._updated = now
+
+    def inventory(self):
+        with self.lock:
+            if self.state['operation'] is not None:
+                self.state['operation']['inventory'] = {'tables': len(self.model.tables),
+                    'measures': len(self.model.measures), 'relationships': len(self.model.relationships),
+                    'matrices': len(self.specs)}
 
     def path(self, relative):
         if not isinstance(relative, str):
@@ -98,25 +144,25 @@ class Studio:
         return path
 
     def analyze_current(self):
-        analysis = analyze(self.model)
+        analysis = analyze(self.model, progress=self.report)
         key, root = self.new_artifact()
-        analysis.write(root)
-        if self.performance:
-            (root/'performance.json').write_text(json.dumps(self.performance, ensure_ascii=False, indent=2), encoding='utf-8')
-        measures = analysis.to_dict()['ranked_measures']
+        measures = copy.deepcopy(analysis.ranked)
         queries = self.performance['queries'] if self.performance else []
         for measure in measures:
             measure['recorded_dax_context_ms'] = max((q['duration_ms'] for q in queries if measure['id'] in q['measure_ids'] and q['duration_ms'] is not None), default=None)
         if any(m['recorded_dax_context_ms'] is not None for m in measures):
             measures.sort(key=lambda m: (m['recorded_dax_context_ms'] is None, -(m['recorded_dax_context_ms'] or 0), -(m['risk_score'] or 0)))
         choices = []
+        emit(self.report, 'matrices', 'Review matrix grains', completed=0, total=len(self.specs), unit='matrices',
+             detail='No matrix contexts found; you can build one after analysis.' if not self.specs else 'Check retained grain and export eligibility')
+        matrix_analysis = None
         if self.specs:
-            matrix_analysis = analyze_matrices(self.model, self.specs)
-            matrix_analysis.write(root / 'matrices')
-            for row in matrix_analysis.matrices:
+            matrix_analysis = analyze_matrices(self.model, self.specs, analysis=analysis, progress=self.report)
+            for i,row in enumerate(matrix_analysis.matrices,1):
+                emit(self.report, 'matrices', 'Review matrix grains', completed=i-1, total=len(self.specs), unit='eligibility checks', detail=row['title'])
                 eligible, reason = True, ''
                 try:
-                    _selection(self.model, [row['spec']], row['id'])
+                    _select_analysis(self.model, matrix_analysis, row['id'])
                 except ModelError as exc:
                     eligible, reason = False, str(exc)
                 choices.append({**row, 'eligible': eligible, 'blocked_reason': reason})
@@ -127,7 +173,17 @@ class Studio:
                 choice['recorded_dax_context_ms'] = max((q['duration_ms'] for q in queries if q['visual_id'] in valid_ids and q['duration_ms'] is not None), default=None)
             if any(c['recorded_dax_context_ms'] is not None for c in choices):
                 choices.sort(key=lambda c: (c['recorded_dax_context_ms'] is None, -(c['recorded_dax_context_ms'] or 0), -(c['priority'] or 0)))
-        self.change(model=analysis.to_dict()['model'], measures=measures, performance=self.performance,
+        analysis.write(root, progress=self.report)
+        emit(self.report, 'reports', 'Write reports', detail='Save matrix review and finish Studio results')
+        if matrix_analysis:
+            matrix_analysis.write(root / 'matrices')
+        if self.performance:
+            (root/'performance.json').write_text(json.dumps(self.performance, ensure_ascii=False, indent=2), encoding='utf-8')
+        self.change(model={'name':self.model.name, 'source_format':self.model.source_format,
+                           'measure_count':len(self.model.measures), 'table_count':len(self.model.tables),
+                           'tables':[{'name':t.name,'storage_modes':sorted(t.storage_modes) or ['unknown']}
+                                     for t in self.model.tables.values()], 'relationship_count':len(self.model.relationships)},
+                    measures=measures, performance=self.performance,
                     matrices=choices, columns=[[e.table, e.name] for e in self.model.entities.values() if e.kind == 'column'],
                     measure_choices=[[e.table, e.name] for e in self.model.measures],
                     analysis_url=f'/artifacts/{key}/report.html',
@@ -136,8 +192,10 @@ class Studio:
 
     def dispatch(self, action, data):
         if action == 'inspect':
+            emit(self.report, 'load', 'Read model', detail='Read the selected semantic model')
             path = self.path(data['model'])
             model = load_model(path)
+            emit(self.report, 'load', 'Read model', detail=f'Model loaded: {len(model.tables)} tables, {len(model.measures)} measures. Read matrix contexts.')
             if data.get('matrices'):
                 specs = load_matrices(self.path(data['matrices']))
             else:
@@ -146,11 +204,15 @@ class Studio:
                 if len(reports) > 1:
                     raise ModelError('Several reports found; choose a matrix specification or one .Report folder')
                 specs = load_matrices(reports[0]) if reports else []
+            if data.get('performance'):
+                emit(self.report, 'load', 'Read model', detail='Match recorded Performance Analyzer query contexts')
             recording = read_performance_analyzer(model, self.path(data['performance'])) if data.get('performance') else None
             self.model, self.specs, self.config, self.performance = model, specs, {}, recording
             self.change(loaded_path=str(path))
+            self.inventory()
             self.analyze_current()
         elif action == 'demo':
+            emit(self.report, 'load', 'Read model', detail='Open the bundled fictional model and matrix contexts')
             key, root = self.new_artifact()
             root.mkdir()
             for name in ['demo.bim', 'demo-matrices.json', 'demo-config.json']:
@@ -160,6 +222,7 @@ class Studio:
             self.config = json.loads((root / 'demo-config.json').read_text())
             self.performance = None
             self.change(loaded_path='Built-in fictional demo')
+            self.inventory()
             self.analyze_current()
         elif action == 'matrix':
             if self.model is None:
@@ -182,6 +245,7 @@ class Studio:
                     raise ModelError('Choose bound columns and measures from the loaded model')
             spec = MatrixSpec.from_dict(raw)
             self.specs = [s for s in self.specs if s.id != spec.id] + [spec]
+            self.inventory()
             self.analyze_current()
         elif action == 'generate':
             if self.model is None:
@@ -193,7 +257,9 @@ class Studio:
                     raise ModelError(f'{name} must be between 1 and {maximum}')
                 settings[name] = value
             key, root = self.new_artifact()
+            emit(self.report, 'generate', 'Build comparison', detail='Generate mock data, the summary candidate and paired DAGs')
             project = export_project(self.model, self.specs, root / 'project', matrix_id=data['matrix'], config=settings)
+            emit(self.report, 'archive', 'Package comparison', detail='Create the downloadable project ZIP')
             with zipfile.ZipFile(root / 'showcase.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
                 for path in project.directory.rglob('*'):
                     if path.is_file():
@@ -218,6 +284,7 @@ class Studio:
                 # It is used only by the isolated client, never served as a file.
                 options['adomd_path'] = Path(data['adomd']).expanduser().resolve()
             if action == 'discover':
+                emit(self.report, 'discover', 'Find Desktop models', detail='Probe local Desktop endpoints')
                 sessions = desktop_sessions(timeout=8, **options)
                 project = self.snapshot()['project']
                 # Friendly matching hints do not select a model or replace the
@@ -227,7 +294,8 @@ class Studio:
                     bim = json.loads(self.artifact(project['key'], 'project/Showcase.SemanticModel/model.bim').read_text(encoding='utf-8'))
                     expected = {(t['name'], m['name']): _tokens(m['expression'])
                                 for t in bim['model']['tables'] for m in t.get('measures', [])}
-                for session in sessions:
+                for i,session in enumerate(sessions,1):
+                    emit(self.report, 'discover', 'Find Desktop models', completed=i-1, total=len(sessions), unit='endpoints', detail='Check loaded definitions for a comparison match')
                     session['models'] = []
                     for index, database in enumerate(session['databases']):
                         hint = {'database': database, 'label': f'Loaded model {index+1}', 'matches_project': False}
@@ -261,7 +329,7 @@ class Studio:
                 key, root = self.new_artifact()
                 result = run_showcase(self.artifact(project['key'], 'project/showcase.json').parent,
                                       server=selected[0], database=selected[1], results_directory=root,
-                                      progress=lambda text: self.change(progress=text), **options)
+                                      progress=lambda text: emit(self.report, 'run', 'Validate and benchmark', detail=text), **options)
                 self.change(result={'url': f'/artifacts/{key}/report.html', 'data': result.data})
         else:
             raise ModelError('Unknown Studio action')
@@ -270,16 +338,36 @@ class Studio:
         with self.lock:
             if self.state['busy']:
                 raise ModelError('An operation is already running')
-            self.state.update(busy=True, error=None, progress='Working…')
+            title = _ACTIONS.get(action, 'Studio operation')
+            stages = _ANALYSIS_STAGES if action in {'inspect','demo','matrix'} else [(action,title)]
+            self._started = self._stage_started = self._updated = time.monotonic()
+            self._finished = None
+            self.state.update(busy=True, error=None, progress=stages[0][1], operation={
+                'id':secrets.token_hex(8), 'action':action, 'title':title, 'status':'running',
+                'stage':stages[0][0], 'label':stages[0][1], 'detail':'Starting…',
+                'completed':None, 'total':None, 'unit':None,
+                'stages':[{'id':identity,'label':label,'status':'running' if i==0 else 'pending'}
+                          for i,(identity,label) in enumerate(stages)]})
         def work():
+            failure = None
             try:
                 self.dispatch(action, data)
-                self.change(progress='Ready')
             except Exception as exc:
-                self.change(error=str(exc), progress='Stopped — see the next step below')
+                failure = str(exc) or type(exc).__name__
             finally:
-                self.change(busy=False)
-        threading.Thread(target=work, daemon=True).start()
+                with self.lock:
+                    self._finished = time.monotonic()
+                    operation = self.state['operation']
+                    operation['status'] = 'failed' if failure else 'completed'
+                    operation['message'] = (('Stopped during '+operation['label']+'. '+failure) if failure else
+                        'Analysis complete. Review the ranked measures and matrix contexts below.' if action in {'inspect','demo','matrix'} else title+' complete.')
+                    for stage in operation['stages']:
+                        if stage['status'] == 'running':
+                            stage.update(status='failed' if failure else 'completed', elapsed_seconds=self._finished-self._stage_started)
+                    self.state.update(busy=False, error=failure, progress=operation['message'])
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        return worker
 
 
 def make_server(workspace, output, *, port=0):
@@ -354,7 +442,7 @@ def make_server(workspace, output, *, port=0):
                 if self.path != '/api/action':
                     return self.send(404, {'error': 'Unknown route'})
                 studio.start(data.pop('action'), data)
-                return self.send(202, {'started': True})
+                return self.send(202, {'started': True, 'operation':studio.snapshot()['operation']})
             except (OSError, ValueError, KeyError, ModelError) as exc:
                 return self.send(400, {'error': str(exc)})
 

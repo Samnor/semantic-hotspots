@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1
+
+- Replace the generic Studio busy message with actual analysis stages, current objects/measures, known item counts, stage/total elapsed time and a persistent completion/failure summary.
+- Distinguish work checkpoints from browser connectivity; show indeterminate progress when totals are unknown and support explicit retry after analysis failures.
+- Reuse the same model/matrix analysis for Studio eligibility checks, preserving export guards without repeating full analysis per matrix.
+- Add observer/lifecycle regressions and verify desktop/mobile progress, connection recovery and corrected-input retry in a browser.
+
 ## 0.9.0
 
 - Explain original and proposed measure computation DAGs side by side, including helper measures, parsed operators, exact DAX, shared dependencies and structural differences.
