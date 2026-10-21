@@ -81,7 +81,7 @@ class VariableTests(unittest.TestCase):
         self.assertIn('MEDIAN at offset',' '.join(result.data['diagnostics']))
         with tempfile.TemporaryDirectory() as tmp:
             result.write(Path(tmp)/'new')
-            page=(Path(tmp)/'new/dags/report.html').read_text()
+            page=(Path(tmp)/'new/dags/report.html').read_text(encoding='utf-8')
             self.assertLess(page.index('Unchanged copy — no automatic rewrite applied'),page.index('Original measure DAG'))
             self.assertIn('MEDIAN at offset',page)
             self.assertIn('informational',page)
