@@ -42,8 +42,9 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
     """Expand a root's full static chain, including recognized scalar operators.
 
     Unsupported expressions remain opaque with their resolved static references.
-    Calculated tables/columns are materialization boundaries, not work repeated
-    for each query. An expression override affects only the root in this view.
+    Confirmed Import definitions with standard expression context are refresh
+    boundaries. Uncertain storage/context retains the full possible query path.
+    An expression override affects only the root in this view.
     """
     from .optimizer import logical_plan
     model = _model(source)
@@ -68,17 +69,25 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
             wanted.add(n)
             pending.extend(dependencies[n] - wanted)
     nodes, edges, diagnostics = {}, [], {}
-    materializations = []
+    materializations, phase_diagnostics = [], {}
     def edge(a, b, kind, **extra):
         edges.append({'from': a, 'to': b, 'kind': kind, **extra})
     for n in sorted(wanted):
         entity = model.entities[n]
         text = overrides.get(n, entity.expression)
-        stored = bool(text and entity.kind in {'table', 'column'})
-        phase = 'refresh' if stored else 'query' if text else 'stored_data'
+        modes = sorted(model.tables[entity.table].storage_modes) if entity.table in model.tables else []
+        context = next((v for k,v in entity.metadata.items() if k.replace('_','').casefold() == 'expressioncontext'), None)
+        calculated = bool(text and entity.kind in {'table', 'column'})
+        standard = context is None or str(context).casefold() in {'standard', 'default'}
+        stored = calculated and modes == ['import'] and standard
+        phase = 'refresh' if stored else 'storage_dependent' if calculated else 'query' if text else 'data_reference'
+        if phase == 'storage_dependent':
+            phase_diagnostics[n] = 'Refresh materialization is not established for this storage mode/expression context; the full possible query path is retained.'
         nodes[n] = {'id': n, 'type': entity.kind, 'label': entity.qualified_name,
                     'table': entity.table, 'name': entity.name, 'expression': text,
                     'definition_phase': phase, 'materialized': stored}
+        if calculated:
+            nodes[n].update(storage_modes=modes, expression_context=context)
         if stored:
             materializations.append(n)
         info = infos.get(n)
@@ -156,7 +165,8 @@ def computation_dag(source, measure, *, table=None, expression=None, graph=None)
             'operator_complete': not any(n.get('operation') == 'opaque' for n in nodes.values()),
             'logical_subset_validated': not diagnostics,
             'unresolved': unresolved, 'reference_diagnostics': reference_diagnostics, 'missing_definitions': missing,
-            'diagnostics': diagnostics, 'query_time_node_ids': sorted(query), 'refresh_time_node_ids': sorted(refresh),
+            'diagnostics': diagnostics, 'phase_diagnostics': phase_diagnostics,
+            'query_time_node_ids': sorted(query), 'refresh_time_node_ids': sorted(refresh),
             'materialization_node_ids': materializations,
             'nodes': [nodes[n] for n in sorted(nodes)],
             'edges': sorted(edges, key=lambda e: (e['from'], e['to'], e['kind'], e.get('argument', 0)))}
@@ -186,10 +196,11 @@ def compare_measure_dags(source, measure, *, table=None, proposed_expression=Non
     old, new = ({n['id']: n for n in g['nodes']} for g in [before, after])
     def signature(e):return (e['from'], e['to'], e['kind'], e.get('argument'))
     old_edges, new_edges = ({signature(e): e for e in g['edges']} for g in [before, after])
-    def operations(g, phase='query_time_node_ids'):
+    def operations(g, phase='query_time_node_ids', definition_phase='query'):
         query = set(g[phase])
         return dict(sorted(Counter(n['operation'] for n in g['nodes']
-                                   if n['id'] in query and n['type'] == 'operation').items()))
+                                   if n['id'] in query and n['type'] == 'operation'
+                                   and n['definition_phase'] == definition_phase).items()))
     changed = sorted(n for n in old.keys() & new.keys() if old[n] != new[n])
     def upstream(g):
         query = set(g['query_time_node_ids'])
@@ -204,8 +215,10 @@ def compare_measure_dags(source, measure, *, table=None, proposed_expression=Non
                            'only_original_edges': [old_edges[n] for n in sorted(old_edges.keys()-new_edges.keys(), key=str)],
                            'only_proposed_edges': [new_edges[n] for n in sorted(new_edges.keys()-old_edges.keys(), key=str)],
                            'query_operators_original': operations(before), 'query_operators_proposed': operations(after),
-                           'refresh_operators_original': operations(before,'refresh_time_node_ids'),
-                           'refresh_operators_proposed': operations(after,'refresh_time_node_ids')},
+                           'refresh_operators_original': operations(before,'refresh_time_node_ids','refresh'),
+                           'refresh_operators_proposed': operations(after,'refresh_time_node_ids','refresh'),
+                           'storage_dependent_operators_original': operations(before,definition_phase='storage_dependent'),
+                           'storage_dependent_operators_proposed': operations(after,definition_phase='storage_dependent')},
             'summary': {'root_expression_changed': old[before['root']]['expression'] != new[after['root']]['expression'],
                         'upstream_measures_original': upstream(before), 'upstream_measures_proposed': upstream(after),
                         'introduced_materialization_ids': sorted(set(after['materialization_node_ids'])-set(before['materialization_node_ids']))},
@@ -214,6 +227,7 @@ def compare_measure_dags(source, measure, *, table=None, proposed_expression=Non
                             'Parsed calls outside the guarded logical subset are syntax only; type/context semantics are not established.',
                             'Opaque expressions retain resolved references and exact DAX; unsupported topology is not invented.',
                             'Refresh-time materialization adds storage and refresh work; fewer query nodes do not prove speedup.',
+                            'Only confirmed Import definitions with standard expression context form refresh boundaries; other calculated definitions retain storage-dependent lineage.',
                             'Implicit relationship/filter propagation and runtime calculation-group application are not DAG edges.',
                             'Validate values, BLANK behavior and intended visual contexts before benchmarking.']}
 
@@ -260,7 +274,7 @@ def _svg(graph, wanted=None, highlights=None):
         status=(highlights or {}).get(identity,'')
         stroke={'only in original':'#b15a33','only in proposed':'#087969','definition changed':'#d18a18'}.get(status,'#a4bdb4')
         label=n['label'];short=label if len(label)<=33 else label[:30]+'…'
-        subtitle='stored · built on refresh' if n.get('materialized') else n['type']
+        subtitle='stored · built on refresh' if n.get('materialized') else 'phase uncertain' if n.get('definition_phase')=='storage_dependent' else n['type']
         if n['type']=='operation' and not n.get('supported',True):subtitle+=' · syntax only'
         svg.append(f'<g><title>{esc(label)}{esc(" · "+status if status else "")}</title><rect x="{x}" y="{y}" width="250" height="62" rx="7" fill="{color}" stroke="{stroke}" stroke-width="2"/><text x="{x+12}" y="{y+25}" font-family="system-ui,sans-serif" font-size="13" fill="#18383d">{esc(short)}</text><text x="{x+12}" y="{y+46}" font-family="system-ui,sans-serif" font-size="11" fill="#52666a">{esc(subtitle)}</text></g>')
     return ''.join(svg)+'</svg>'
@@ -281,11 +295,12 @@ def render_dag_comparison(comparison):
         edge_list=''.join('<li>'+esc(nodes[e['from']]['label'])+' → '+esc(nodes[e['to']]['label'])+' <small>'+esc(e['kind'])+((' · argument '+str(e['argument'])) if 'argument' in e else '')+'</small></li>' for e in g['edges'])
         refresh=('<details><summary>Refresh-time lineage and materialization</summary><p>Stored definitions are built on refresh. These dependencies remain part of the full lineage; they are not assumed to run per query.</p><div class="dag-diagram">'+_svg(g,g['refresh_time_node_ids'],highlights)+'</div></details>') if g['materialization_node_ids'] else ''
         notes=[]
+        if g.get('phase_diagnostics'):notes.append('Some calculated definitions have storage-dependent timing. Their full possible query paths remain visible; they are excluded from confirmed query/refresh operator counts.')
         if not g['dependency_complete']:notes.append('The dependency chain is incomplete or cyclic; inspect unresolved references and missing definitions below.')
         if not g['operator_complete']:notes.append('Some DAX is opaque; its exact definition and resolved references are retained without invented operator topology.')
         elif g['diagnostics']:notes.append('Some parsed calls lack established type/context semantics. They are labelled “syntax only”; diagnostics are retained below.')
         issues=('<p class="dag-note">'+esc(' '.join(notes))+'</p>') if notes else ''
-        sides.append(f'<section class="dag-side"><h3>{title}</h3><p>{esc(root["label"])}</p><pre>{esc(root["expression"] or "Definition missing")}</pre>{issues}<h4>Query-time dependency view</h4><div class="dag-diagram">{_svg(g,g["query_time_node_ids"],highlights)}</div>{refresh}<details><summary>Every node, definition and edge · {len(g["nodes"])} nodes / {len(g["edges"])} edges</summary>{definitions}<ol class="dag-edges">{edge_list}</ol><pre>{esc(json.dumps({k:g[k] for k in ["unresolved","reference_diagnostics","missing_definitions","diagnostics","evaluation_order"]},ensure_ascii=False,indent=2))}</pre></details></section>')
+        sides.append(f'<section class="dag-side"><h3>{title}</h3><p>{esc(root["label"])}</p><pre>{esc(root["expression"] or "Definition missing")}</pre>{issues}<h4>Query-time dependency view</h4><div class="dag-diagram">{_svg(g,g["query_time_node_ids"],highlights)}</div>{refresh}<details><summary>Every node, definition and edge · {len(g["nodes"])} nodes / {len(g["edges"])} edges</summary>{definitions}<ol class="dag-edges">{edge_list}</ol><pre>{esc(json.dumps({k:g[k] for k in ["unresolved","reference_diagnostics","missing_definitions","diagnostics","phase_diagnostics","evaluation_order"]},ensure_ascii=False,indent=2))}</pre></details></section>')
     delta=comparison['difference']
     summary=comparison['summary']
     explanation=('<p>Upstream measure dependencies: '+str(summary['upstream_measures_original'])+' original → '+str(summary['upstream_measures_proposed'])+' proposed. Root DAX '+('changed.' if summary['root_expression_changed'] else 'is unchanged.')+' These are structural differences, not measured work or speedup.</p>')
@@ -310,6 +325,7 @@ def dag_to_text(graph):
             lines.append('  -> '+e['to']+' ('+role+')')
     lines += ['', 'Unresolved: '+json.dumps(graph['unresolved'],ensure_ascii=False),
               'Reference diagnostics: '+json.dumps(graph['reference_diagnostics'],ensure_ascii=False),
+              'Phase diagnostics: '+json.dumps(graph.get('phase_diagnostics',{}),ensure_ascii=False),
               'Missing definitions: '+json.dumps(graph['missing_definitions'],ensure_ascii=False),
               'Diagnostics: '+json.dumps(graph['diagnostics'],ensure_ascii=False)]
     return '\n'.join(lines)+'\n'

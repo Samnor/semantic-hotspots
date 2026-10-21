@@ -395,6 +395,8 @@ The diagrams retain helper-measure definitions and shared branches. Recognized s
 
 For a summary candidate, the proposed query path ends at the stored summary. Expand **Refresh-time lineage and materialization** to see its `SUMMARIZE`, retained keys, aggregation states and physical inputs. Work moved to refresh is still part of the full DAG. Matrix context and added relationships are retained separately; implicit filter propagation is not invented as an execution edge.
 
+Refresh boundaries require confirmed Import storage and standard/default expression context. DirectQuery, Dual, user-context and unknown calculated definitions retain their full possible query paths and are flagged as storage-dependent; they are excluded from confirmed query/refresh operator counts. This follows the storage/context distinction in Microsoft’s [calculated-column documentation](https://learn.microsoft.com/en-us/power-bi/transform-model/desktop-calculated-columns).
+
 You can also compare your own proposed expression without changing the model:
 
 ```powershell

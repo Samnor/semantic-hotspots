@@ -120,12 +120,42 @@ class DagComparisonTests(unittest.TestCase):
             self.assertTrue((root/entry['directory']/'original.txt').is_file())
 
     def test_calculated_column_is_a_materialization_boundary(self):
-        data=sample();data['model']['tables'][0]['columns'].append({'name':'Double','dataType':'double','expression':'Orders[Amount] * 2'})
+        data=sample();data['model']['tables'][0]['partitions']=[{'name':'Data','mode':'import'}]
+        data['model']['tables'][0]['columns'].append({'name':'Double','dataType':'double','expression':'Orders[Amount] * 2'})
         data['model']['tables'][0]['measures'][0]['expression']='SUM(Orders[Double])'
         g=computation_dag(data,'Leaf');q=set(g['query_time_node_ids'])
         column=next(n for n in g['nodes'] if n['type']=='column' and n['name']=='Double')
         self.assertIn(column['id'],q);self.assertTrue(column['materialized'])
         self.assertTrue(any(n.get('operation')=='binary' and n['id'] not in q for n in g['nodes']))
+
+    def test_uncertain_storage_and_user_context_do_not_hide_calculated_lineage(self):
+        for mode, context in [(None,None),('directQuery',None),('dual',None),('directLake',None),
+                              ('import','UserContext'),('import','unknown-future-context')]:
+            with self.subTest(mode=mode,context=context):
+                data=sample();t=data['model']['tables'][0]
+                if mode:t['partitions']=[{'name':'Data','mode':mode}]
+                t['columns'].append({'name':'Double','dataType':'double',
+                    'expression':'Orders[Amount] * 2','expressionContext':context})
+                t['measures'][0]['expression']='SUM(Orders[Double])'
+                c=compare_measure_dags(data,'Leaf',proposed_expression='SUM(Orders[Double])')
+                g=c['original'];q=set(g['query_time_node_ids'])
+                col=next(n for n in g['nodes'] if n['type']=='column' and n['name']=='Double')
+                self.assertFalse(col['materialized']);self.assertEqual(col['definition_phase'],'storage_dependent')
+                self.assertEqual(col['expression_context'],context)
+                self.assertTrue(g['phase_diagnostics']);self.assertFalse(g['materialization_node_ids'])
+                self.assertTrue(any(n.get('operation')=='binary' and n['id'] in q for n in g['nodes']))
+                self.assertNotIn('binary',c['difference']['query_operators_original'])
+                self.assertEqual(c['difference']['storage_dependent_operators_original'],{'binary':1})
+                assert_graph(self,g)
+
+    def test_tmdl_expression_context_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/'model.tmdl'
+            p.write_text("table Orders\n    column Amount\n        dataType: double\n    column Double = Orders[Amount] * 2\n        expressionContext: UserContext\n    measure Total = SUM(Orders[Double])\n    partition Data = m\n        mode: import\n",encoding='utf-8')
+            g=computation_dag(p,'Total')
+            col=next(n for n in g['nodes'] if n['type']=='column' and n['name']=='Double')
+            self.assertEqual(col['expression_context'],'UserContext')
+            self.assertFalse(col['materialized']);self.assertTrue(g['phase_diagnostics'])
 
     def test_safe_html_unicode_dot_and_complete_json_files(self):
         data=sample();name='Vä<unsafe>"'
