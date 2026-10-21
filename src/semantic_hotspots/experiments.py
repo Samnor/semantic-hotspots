@@ -47,7 +47,7 @@ def _fresh(path):
     return path
 
 
-def prepare_rewrite_experiment(bundle, directory, *, top=20):
+def prepare_rewrite_experiment(bundle, directory, *, top=20, validation_dates=None):
     """Prepare immutable query alternatives; the already loaded model stays unchanged.
 
     Scenarios are inherited from the synthetic bundle. A scalar total is always
@@ -61,7 +61,11 @@ def prepare_rewrite_experiment(bundle, directory, *, top=20):
     from .analyzer import analyze
     analysis = analyze(model)
     plan = analysis.rewrite_plan
-    candidates = copy.deepcopy(plan.candidates[:top])
+    from .date_validation import date_controls, query_definitions
+    candidates = copy.deepcopy([c for c in plan.candidates if c.get('validation_available',True)][:top])
+    for candidate in candidates:
+        candidate['date_controls']=date_controls(model,model.entities[candidate['measure_id']],dates=validation_dates,graph=analysis.graph)
+    candidates=[c for c in candidates if not (c.get('date_controls') or {}).get('blocked_reasons')]
     if not candidates:
         raise ModelError('No guarded rewrite candidates in the supported logical subset')
     config = SimulationConfig.from_dict(source['config'])
@@ -77,10 +81,17 @@ def prepare_rewrite_experiment(bundle, directory, *, top=20):
             raise ModelError('Generated candidate name collides with model metadata')
         owner = model.entities[candidate['measure_id']]
         alias = Entity('measure', owner.table, alias_name).qualified_name
-        definition = f'DEFINE MEASURE {alias} = {candidate["after"]}\n'
-        for w in workloads:
-            if w['measure_id'] != candidate['measure_id']:
-                continue
+        controls=candidate.get('date_controls')
+        expanded=[]
+        for workload in workloads:
+            if workload['measure_id']!=candidate['measure_id']:continue
+            for as_of in controls['dates'] if controls else [None]:
+                w=copy.deepcopy(workload)
+                w['as_of']=as_of
+                if as_of:w['scenario']+='-as-of-'+as_of
+                expanded.append(w)
+        for w in expanded:
+            definition=query_definitions(owner.table,owner.name,candidate['after'],alias_name,controls,w['as_of'])
             identity = _hash(candidate['id']+'\x00'+w['scenario'])[:20]
             prefix = '__sh_' + identity + '_'
             columns = {key: prefix+key for key in ['original', 'candidate', 'equal', 'original_blank', 'candidate_blank']}
@@ -96,7 +107,7 @@ def prepare_rewrite_experiment(bundle, directory, *, top=20):
             if w['query'].count(marker) != 1:
                 raise ModelError('Unexpected generated workload projection')
             validation = definition+w['query'].replace(marker, ',\n    '.join(fields))
-            queries = {'validation': validation, 'baseline': w['query'],
+            queries = {'validation': validation, 'baseline': (definition if controls else '')+w['query'],
                        'candidate': definition+w['query'].replace(marker, '"Result", '+alias)}
             paths = {}
             for kind, query in queries.items():
@@ -104,7 +115,7 @@ def prepare_rewrite_experiment(bundle, directory, *, top=20):
                 files[filename] = query
                 paths[kind] = {'file': filename, 'sha256': _hash(query), 'query': query}
             cases.append({'id': identity, 'candidate_id': candidate['id'], 'measure_id': candidate['measure_id'],
-                          'measure': candidate['measure'], 'scenario': w['scenario'], 'columns': columns,
+                          'measure': candidate['measure'], 'scenario': w['scenario'], 'as_of':w['as_of'], 'columns': columns,
                           'group_by': w['group_by'], 'filters': w['filters'], 'queries': paths})
     manifest = {'schema_version': '1.0', 'kind': 'rewrite-experiment', 'source_model': source['source_model'],
                 'synthetic_model_name': source['synthetic_model_name'], 'seed': source['seed'],

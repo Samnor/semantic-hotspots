@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.0
+
+- Preserve live TODAY() in production proposals; export fixed-date query-scoped overrides for both paths and date-dependent helper measures, including per-date visual workloads and synthetic rewrite experiments.
+- Propose independently guarded local rewrites while known helper definitions remain missing; keep their calls opaque and withhold validation until real definitions are available.
+- Extend OPT003 through filtered table variables while preserving lexical bindings and other consumers. Allow local rules around missing column-type metadata without inferring surrounding semantics.
+- Recover actual reachable definitions from explicit matching BIM/TMDL exports or one explicitly selected local Desktop catalog. Reject conflicting roots/definitions and ambiguous names; do not edit source files or the engine. Add Studio recovery actions, date selection, public APIs and CLI options.
+
 ## 0.15.0
 
 - Bind table variables and physical/temporary row columns through VALUES, ADDCOLUMNS, paired-name SELECTCOLUMNS, FILTER and SUMX. Keep lexical lifetimes, row/filter contexts, source spans and projected schemas explicit.
