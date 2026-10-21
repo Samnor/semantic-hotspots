@@ -16,6 +16,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from .comparison import compare_measure_dags, write_dag_comparison, render_dag_comparison, DAG_CSS
 from .graph import DependencyGraph
 from .matrices import analyze_matrices, _column
 from .model import Entity, Model, ModelError
@@ -348,6 +349,18 @@ def export_project(source,matrices,directory,*,matrix_id=None,config=None):
                       'Floating-point regrouping can change results. Synthetic tests do not establish production/RLS equivalence.',
                       'The PBIR layout uses default hierarchy/total behavior, not the captured original visual query.',
                       'Desktop opening, refresh and DAX execution have not been tested by this exporter.']}
+        comparisons = []
+        for change in changes:
+            comparison = compare_measure_dags(model, change['measure_id'], proposed_source=generated,
+                                              proposed_measure=change['candidate']['name'], proposed_table=change['table'])
+            comparison['context'] = {'matrix': row['spec'], 'summary_grain': manifest['grain'],
+                                     'added_relationships': links}
+            folder = 'dag-comparisons/' + hashlib.sha256(change['measure_id'].encode()).hexdigest()[:20]
+            write_dag_comparison(comparison, root/folder)
+            comparisons.append((change, comparison, folder))
+        manifest['dag_comparisons'] = [{'measure_id': c['measure_id'], 'directory': folder,
+                                        'original_root': d['original']['root'], 'proposed_root': d['proposed']['root']}
+                                       for c, d, folder in comparisons]
         _json(root/'showcase.json',manifest)
         _json(root/'matrix-specs.json',{'schema_version':'1.0','matrices':[row['spec']]})
         instructions=('POWER BI SHOWCASE\n\n1. Open Showcase.pbip in a current Power BI Desktop on Windows with PBIP/PBIR support.\n'
@@ -365,9 +378,9 @@ def export_project(source,matrices,directory,*,matrix_id=None,config=None):
                       'PBIX packaging/saving requires Power BI Desktop. The library does not deploy, publish, overwrite the source, or claim engine validation.\n')
         (root/'OPEN-IN-DESKTOP.txt').write_text(instructions,encoding='utf-8')
         from .report import _CSS
-        change_html=''.join('<details><summary>'+html.escape(c['original_name'])+'</summary><h3>Baseline</h3><pre>'+html.escape(c['before'])+'</pre><h3>Candidate</h3><pre>'+html.escape(c['candidate']['expression'])+'</pre></details>' for c in changes)
+        change_html=''.join('<details><summary>'+html.escape(c['original_name'])+' · original and proposed DAGs</summary>'+render_dag_comparison(d)+'<p><a href="'+folder+'/report.html">Open comparison and download DAGs</a></p></details>' for c,d,folder in comparisons)
         warnings=''.join('<li>'+html.escape(w)+'</li>' for w in manifest['warnings'])
-        (root/'showcase.html').write_text(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Power BI showcase</title><style>{_CSS}</style></head><body><main><h1>One matrix. Two computation paths.</h1><p>{html.escape(row["title"])}</p><p>One page, one matrix, {len(changes)} baseline/candidate measure pairs. Engine validation: not run. Performance: unknown.</p><h2>New summary grain</h2><pre>{html.escape(json.dumps(manifest["grain"]))}</pre><p>This refresh-time summary retains relationship keys and component states. It adds memory and refresh work.</p><h2>Inspect the changes</h2>{change_html}<h2>Open and validate</h2><pre>{html.escape(instructions)}</pre><ul>{warnings}</ul><p><a href="showcase.json">Full manifest</a> · <a href="OPEN-IN-DESKTOP.txt">Desktop instructions</a> · <a href="Showcase.pbip">PBIP entry point (download the whole project)</a></p></main></body></html>',encoding='utf-8')
+        (root/'showcase.html').write_text(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Power BI showcase</title><style>{_CSS}{DAG_CSS}</style></head><body><main><h1>One matrix. Two computation paths.</h1><p>{html.escape(row["title"])}</p><p>One page, one matrix, {len(changes)} baseline/candidate measure pairs. Engine validation: not run. Performance: unknown.</p><h2>New summary grain</h2><pre>{html.escape(json.dumps(manifest["grain"]))}</pre><p>This refresh-time summary retains relationship keys and component states. It adds memory and refresh work.</p><h2>Inspect the changes</h2>{change_html}<h2>Open and validate</h2><pre>{html.escape(instructions)}</pre><ul>{warnings}</ul><p><a href="showcase.json">Full manifest</a> · <a href="OPEN-IN-DESKTOP.txt">Desktop instructions</a> · <a href="Showcase.pbip">PBIP entry point (download the whole project)</a></p></main></body></html>',encoding='utf-8')
         # Stage all generation away from the destination, then commit atomically.
         if destination.exists():destination.rmdir()
         os.replace(root,destination)

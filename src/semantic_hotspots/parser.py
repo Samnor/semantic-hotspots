@@ -77,7 +77,8 @@ def _json_model(raw: dict, source: str) -> Model:
                 model.entities[t.id].expression = _expression(ps.get('expression'))
         for column in table.get('columns', []):
             model.add(Entity('column', t.name, column['name'], _expression(column.get('expression')), source,
-                             metadata={'data_type': column.get('dataType'), 'source_column': column.get('sourceColumn')}))
+                             metadata={'data_type': column.get('dataType'), 'source_column': column.get('sourceColumn'),
+                                       'expression_context': column.get('expressionContext')}))
         for measure in table.get('measures', []):
             entity = model.add(Entity('measure', t.name, measure['name'], _expression(measure.get('expression')), source,
                                       metadata={'format_string': measure.get('formatString'), 'description': measure.get('description')}))
@@ -204,7 +205,7 @@ def _tmdl_documents(documents: list[tuple[str, str]]) -> Model:
                         attr = {'isactive': 'active', 'crossfilteringbehavior': 'cross_filter',
                                 'fromcardinality': 'from_cardinality', 'tocardinality': 'to_cardinality'}[k]
                         setattr(owner, attr, value.casefold() == 'true' if k == 'isactive' else value)
-                elif isinstance(owner, Entity) and key.casefold() in {'datatype', 'formatstring', 'sourcecolumn'}:
+                elif isinstance(owner, Entity) and key.casefold() in {'datatype', 'formatstring', 'sourcecolumn', 'expressioncontext'}:
                     owner.metadata[key] = value
             elif expr_prop and stack:
                 key, inline = expr_prop.groups()

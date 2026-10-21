@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0
+
+- Explain original and proposed measure computation DAGs side by side, including helper measures, parsed operators, exact DAX, shared dependencies and structural differences.
+- Separate query-time dependencies from calculated-table/column refresh lineage so materialization work remains visible; unknown syntax/bindings stay explicit and no speedup is inferred.
+- Export reusable original/proposed JSON, text and Graphviz DOT alongside offline HTML. Add `compare-dags` and public Python APIs for root-expression or separate-model comparisons.
+- Include comparison reports automatically in guarded rewrites, rewrite experiments and generated one-matrix PBIP showcases, with a direct Studio link.
+- Add fictional regression coverage; this feature executes no DAX and changes no source models.
+
 ## 0.8.0
 
 - Add dependency-free local Studio: workspace file browsing, bundled fictional demo, ranked findings, optional native Performance Analyzer v1 import, matrix context review/builder, guarded generation, ZIP download and Windows Desktop opening.

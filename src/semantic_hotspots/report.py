@@ -20,6 +20,7 @@ def _number(value, unit: str = '') -> str:
 
 
 def render_html(analysis, chain_index: dict[str, str]) -> str:
+    from .comparison import DAG_CSS
     from .analyzer import SCORE_DESCRIPTION, VERSION
 
     esc = _esc
@@ -205,7 +206,7 @@ def render_html(analysis, chain_index: dict[str, str]) -> str:
     warnings = ''.join(f'<li>{esc(w)}</li>' for w in analysis.warnings)
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Semantic hotspots · {esc(analysis.model.name)}</title><style>{_CSS}</style></head><body>
+<title>Semantic hotspots · {esc(analysis.model.name)}</title><style>{_CSS}{DAG_CSS}</style></head><body>
 <a class="skip" href="#ranking">Skip to measure ranking</a><main>
 <header><div class="eyebrow">SEMANTIC HOTSPOTS <span>MODEL REVIEW · OFFLINE</span></div>
 <h1>Find the measures worth<br>investigating first.</h1><p class="model-name">{esc(analysis.model.name)}</p>

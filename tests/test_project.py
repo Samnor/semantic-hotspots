@@ -33,7 +33,7 @@ class ProjectTests(unittest.TestCase):
         self.assertTrue(result.project_path.is_file());self.assertTrue(result.model_path.is_file())
         visuals=list(self.root.glob('Showcase.Report/definition/pages/*/visuals/*/visual.json'))
         self.assertEqual(len(visuals),1)
-        visual=json.loads(visuals[0].read_text())['visual']
+        visual=json.loads(visuals[0].read_text(encoding="utf-8"))['visual']
         self.assertEqual(visual['visualType'],'pivotTable')
         self.assertEqual(len(visual['query']['queryState']['Values']['projections']),4)
         self.assertEqual(len(list(self.root.glob('Showcase.Report/definition/pages/*/page.json'))),1)
@@ -42,7 +42,7 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(self.read('Showcase.SemanticModel/model.bim')['model']['defaultPowerBIDataSourceVersion'],'powerBI_V3')
         names={m['name'] for t in self.read('Showcase.SemanticModel/model.bim')['model']['tables'] for m in t.get('measures',[])}
         self.assertEqual(names,{'Revenue','Cost total','Margin','Candidate Revenue','Candidate Margin'})
-        self.assertIn('not run',(self.root/'showcase.html').read_text())
+        self.assertIn('not run',(self.root/'showcase.html').read_text(encoding="utf-8"))
 
     def test_summary_preserves_keys_and_recomposes_ratio_from_components(self):
         result=self.export();bim=self.read('Showcase.SemanticModel/model.bim')
@@ -91,7 +91,7 @@ class ProjectTests(unittest.TestCase):
         self.assertNotIn('File.Contents',content);self.assertNotIn('SyntheticDataRoot',content)
         self.assertNotIn(str(self.root),content)
         moved=self.root.with_name('moved');self.root.rename(moved)
-        report=json.loads((moved/'Showcase.Report/definition.pbir').read_text())
+        report=json.loads((moved/'Showcase.Report/definition.pbir').read_text(encoding="utf-8"))
         target=(moved/'Showcase.Report'/report['datasetReference']['byPath']['path']).resolve()
         self.assertTrue((target/'model.bim').is_file())
 
@@ -140,7 +140,7 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(len(result.manifest['cases']),6)
         for case in result.manifest['cases']:
             for kind,query in case['queries'].items():
-                text=(self.root/query['file']).read_text()
+                text=(self.root/query['file']).read_text(encoding="utf-8")
                 self.assertEqual(hashlib.sha256(text.encode()).hexdigest(),query['sha256'])
                 self.assertEqual(hashlib.sha256((self.root/query['file']).read_bytes()).hexdigest(),query['sha256'])
                 if kind=='validation':
@@ -158,7 +158,7 @@ class ProjectTests(unittest.TestCase):
         self.assertFalse(list(self.root.parent.glob('.showcase-*')))
         self.root.mkdir();marker=self.root/'keep.txt';marker.write_text('keep')
         with self.assertRaises(ModelError):self.export()
-        self.assertEqual(marker.read_text(),'keep')
+        self.assertEqual(marker.read_text(encoding="utf-8"),'keep')
         self.assertEqual(list(self.root.iterdir()),[marker])
 
     def test_unknown_key_types_and_malformed_or_extra_config_are_rejected(self):
@@ -191,7 +191,7 @@ class ProjectTests(unittest.TestCase):
 
     def test_generated_names_and_source_types_remain_reviewable(self):
         self.export(spec=matrix(title='<script>unsafe</script>'))
-        text=(self.root/'showcase.html').read_text()
+        text=(self.root/'showcase.html').read_text(encoding="utf-8")
         self.assertIn('&lt;script&gt;',text);self.assertNotIn('<script>unsafe',text)
         self.assertEqual(load_model(self.root/'Showcase.SemanticModel/model.bim').measure('Candidate Revenue').metadata.get('description'),
                          'Unvalidated summary-table candidate for the declared showcase context only.')
