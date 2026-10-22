@@ -747,6 +747,8 @@ Compare **total native CU across equivalent completed interactions**, including 
 
 ### A final measure built on five sequential helpers
 
+[Native validation of all six stages](benchmarks/five-helper-chain-20261022/README.md) passed on both hand-calculated and larger fixtures. Its CU comparison remains inconclusive despite a lower median.
+
 Create a smaller daily-production fixture with **exactly six original measures**:
 
 ```powershell

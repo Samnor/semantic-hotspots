@@ -1,0 +1,594 @@
+{
+  "kind": "five-helper-production-chain-native-validation",
+  "package_version": "0.21.0",
+  "fixture": "Independent fictional data and six sequential definitions; no original report content.",
+  "chain": [
+    "Daily production",
+    "Daily production difference",
+    "Period production difference",
+    "Cumulative production difference",
+    "Average daily production difference",
+    "Projected next-period production difference"
+  ],
+  "helper_count": 5,
+  "candidate_changes": "One new root; all five original helpers unchanged. Preserve prior-day, period and cumulative contexts; collapse exact additive daily sums through guarded helper specialization.",
+  "business_rules": {
+    "difference": "Current day minus previous calendar day; BLANK if either observation is missing",
+    "cumulative_scope": "All periods through the current period, retaining site/product and explicit Calendar filters",
+    "average_denominator": "All calendar days in the cumulative context, including days without a difference",
+    "forecast_horizon_calendar_days": 14
+  },
+  "correctness": {
+    "fixtures": {
+      "large": {
+        "scalar_cases": 24,
+        "matrix_cases": 2
+      },
+      "tiny": {
+        "scalar_cases": 23,
+        "matrix_cases": 2
+      }
+    },
+    "source_value_checks": 17802,
+    "strict_root_pair_rows": 2967,
+    "oracle": "Independent source-row arithmetic; exact integer/BLANK expectations, tolerance 1e-10 for ratios and projections. Original/candidate equality uses strict DAX == and explicit BLANK flags.",
+    "status": "passed",
+    "downloaded_full_chain_query": "executed and passed",
+    "coverage": [
+      "daily rows and totals",
+      "first day and previous calendar day",
+      "period boundary lookup",
+      "missing observation and missing calendar day",
+      "zero production",
+      "negative corrections",
+      "all-BLANK products",
+      "empty and unknown members",
+      "nonadjacent days and periods",
+      "region/site/product filters",
+      "matrix subtotals and grand totals"
+    ]
+  },
+  "hand_calculated_case": {
+    "daily_production": [
+      10,
+      20,
+      5,
+      0
+    ],
+    "daily_differences": [
+      null,
+      10,
+      -15,
+      -5
+    ],
+    "period_differences": [
+      10,
+      -20
+    ],
+    "cumulative_differences": [
+      10,
+      -10
+    ],
+    "average_daily_differences": [
+      5,
+      -2.5
+    ],
+    "14_day_projections": [
+      70,
+      -35
+    ],
+    "grand_total_projection": -35,
+    "note": "Grand total is recomputed in cumulative context; it is not the sum of the displayed forecasts."
+  },
+  "capacity": {
+    "sku": "FTL64 trial",
+    "mode": "Import",
+    "concurrency": 1,
+    "data": {
+      "Periods": 26,
+      "Calendar": 364,
+      "Site": 6,
+      "Product": 8,
+      "Production Daily": 16849,
+      "Metrics": 1
+    },
+    "pairs": 8,
+    "measured_queries": 48,
+    "excluded_primes": 6,
+    "root_context_validation_rows": 924,
+    "matching": "Exact tagged query tokens and item/operation identity. Complete native CU and CPU coverage; same alias and tagging shape, alternating AB/BA order.",
+    "journey": {
+      "interactions_per_replay": 3,
+      "expected_pairs": 8,
+      "metrics": {
+        "cu_seconds": {
+          "status": "inconclusive",
+          "complete": true,
+          "paired_repetitions": 8,
+          "baseline_recorded_samples": 8,
+          "candidate_recorded_samples": 8,
+          "baseline_median": 6.24,
+          "candidate_median": 4.768,
+          "baseline_total": 51.008,
+          "candidate_total": 39.088,
+          "reduction_percent": 23.589743589743595,
+          "baseline_range": [
+            5.5040000000000004,
+            7.76
+          ],
+          "candidate_range": [
+            4.512,
+            5.5040000000000004
+          ]
+        },
+        "cpu_ms": {
+          "status": "inconclusive",
+          "complete": true,
+          "paired_repetitions": 8,
+          "baseline_recorded_samples": 8,
+          "candidate_recorded_samples": 8,
+          "baseline_median": 390.0,
+          "candidate_median": 298.0,
+          "baseline_total": 3188.0,
+          "candidate_total": 2443.0,
+          "reduction_percent": 23.589743589743588,
+          "baseline_range": [
+            344.0,
+            485.0
+          ],
+          "candidate_range": [
+            282.0,
+            344.0
+          ]
+        },
+        "engine_duration_ms": {
+          "status": "inconclusive",
+          "complete": true,
+          "paired_repetitions": 8,
+          "baseline_recorded_samples": 8,
+          "candidate_recorded_samples": 8,
+          "baseline_median": 407.0,
+          "candidate_median": 336.0,
+          "baseline_total": 3647.0,
+          "candidate_total": 2707.0,
+          "reduction_percent": 17.444717444717444,
+          "baseline_range": [
+            391.0,
+            751.0
+          ],
+          "candidate_range": [
+            296.0,
+            396.0
+          ]
+        },
+        "client_elapsed_ms": {
+          "status": "inconclusive",
+          "complete": true,
+          "paired_repetitions": 8,
+          "baseline_recorded_samples": 8,
+          "candidate_recorded_samples": 8,
+          "baseline_median": 2694.0354369580746,
+          "candidate_median": 2568.46643704921,
+          "baseline_total": 21955.08237183094,
+          "candidate_total": 21430.604001507163,
+          "reduction_percent": 4.661000304088377,
+          "baseline_range": [
+            2488.389582373202,
+            3241.74845777452
+          ],
+          "candidate_range": [
+            2539.6779160946608,
+            3089.155750349164
+          ]
+        }
+      },
+      "pairs": [
+        {
+          "repeat": 1,
+          "baseline": {
+            "cu_seconds": 6.0,
+            "cpu_ms": 375.0,
+            "engine_duration_ms": 423.0,
+            "client_elapsed_ms": 2732.6162913814187
+          },
+          "candidate": {
+            "cu_seconds": 4.5120000000000005,
+            "cpu_ms": 282.0,
+            "engine_duration_ms": 396.0,
+            "client_elapsed_ms": 2682.6080828905106
+          }
+        },
+        {
+          "repeat": 2,
+          "baseline": {
+            "cu_seconds": 7.76,
+            "cpu_ms": 485.0,
+            "engine_duration_ms": 751.0,
+            "client_elapsed_ms": 3241.74845777452
+          },
+          "candidate": {
+            "cu_seconds": 5.264,
+            "cpu_ms": 329.0,
+            "engine_duration_ms": 360.0,
+            "client_elapsed_ms": 3089.155750349164
+          }
+        },
+        {
+          "repeat": 3,
+          "baseline": {
+            "cu_seconds": 7.247999999999999,
+            "cpu_ms": 453.0,
+            "engine_duration_ms": 485.0,
+            "client_elapsed_ms": 2844.6435425430536
+          },
+          "candidate": {
+            "cu_seconds": 5.247999999999999,
+            "cpu_ms": 328.0,
+            "engine_duration_ms": 344.0,
+            "client_elapsed_ms": 2539.6779160946608
+          }
+        },
+        {
+          "repeat": 4,
+          "baseline": {
+            "cu_seconds": 6.256,
+            "cpu_ms": 391.0,
+            "engine_duration_ms": 407.0,
+            "client_elapsed_ms": 2765.5967073515058
+          },
+          "candidate": {
+            "cu_seconds": 4.768,
+            "cpu_ms": 298.0,
+            "engine_duration_ms": 328.0,
+            "client_elapsed_ms": 2862.0959585532546
+          }
+        },
+        {
+          "repeat": 5,
+          "baseline": {
+            "cu_seconds": 5.76,
+            "cpu_ms": 360.0,
+            "engine_duration_ms": 391.0,
+            "client_elapsed_ms": 2488.389582373202
+          },
+          "candidate": {
+            "cu_seconds": 4.768,
+            "cpu_ms": 298.0,
+            "engine_duration_ms": 312.0,
+            "client_elapsed_ms": 2573.0842920020223
+          }
+        },
+        {
+          "repeat": 6,
+          "baseline": {
+            "cu_seconds": 5.5040000000000004,
+            "cpu_ms": 344.0,
+            "engine_duration_ms": 391.0,
+            "client_elapsed_ms": 2601.1384585872293
+          },
+          "candidate": {
+            "cu_seconds": 4.5120000000000005,
+            "cpu_ms": 282.0,
+            "engine_duration_ms": 296.0,
+            "client_elapsed_ms": 2558.673377148807
+          }
+        },
+        {
+          "repeat": 7,
+          "baseline": {
+            "cu_seconds": 6.24,
+            "cpu_ms": 390.0,
+            "engine_duration_ms": 392.0,
+            "client_elapsed_ms": 2655.4545825347304
+          },
+          "candidate": {
+            "cu_seconds": 5.5040000000000004,
+            "cpu_ms": 344.0,
+            "engine_duration_ms": 359.0,
+            "client_elapsed_ms": 2561.460042372346
+          }
+        },
+        {
+          "repeat": 8,
+          "baseline": {
+            "cu_seconds": 6.24,
+            "cpu_ms": 390.0,
+            "engine_duration_ms": 407.0,
+            "client_elapsed_ms": 2625.4947492852807
+          },
+          "candidate": {
+            "cu_seconds": 4.512,
+            "cpu_ms": 282.0,
+            "engine_duration_ms": 312.0,
+            "client_elapsed_ms": 2563.848582096398
+          }
+        }
+      ]
+    },
+    "scenarios": [
+      {
+        "id": "expand-matrix",
+        "validation": {
+          "status": "passed_tested_rows",
+          "rows": 784,
+          "nonblank_rows": 567
+        },
+        "metrics": {
+          "cu_seconds": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 3.744,
+            "candidate_median": 2.752,
+            "baseline_total": 31.488,
+            "candidate_total": 22.752,
+            "reduction_percent": 26.495726495726508,
+            "baseline_range": [
+              3.248,
+              5.504
+            ],
+            "candidate_range": [
+              2.496,
+              3.248
+            ]
+          },
+          "cpu_ms": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 234.0,
+            "candidate_median": 172.0,
+            "baseline_total": 1968.0,
+            "candidate_total": 1422.0,
+            "reduction_percent": 26.495726495726498,
+            "baseline_range": [
+              203.0,
+              344.0
+            ],
+            "candidate_range": [
+              156.0,
+              203.0
+            ]
+          },
+          "engine_duration_ms": {
+            "status": "observed_reduction",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 235.0,
+            "candidate_median": 188.0,
+            "baseline_total": 2271.0,
+            "candidate_total": 1486.0,
+            "reduction_percent": 20.0,
+            "baseline_range": [
+              219.0,
+              579.0
+            ],
+            "candidate_range": [
+              172.0,
+              203.0
+            ]
+          },
+          "client_elapsed_ms": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 1003.9256452582777,
+            "candidate_median": 1014.4722289405763,
+            "baseline_total": 8463.979582302272,
+            "candidate_total": 8479.259917512536,
+            "reduction_percent": -1.050534343067346,
+            "baseline_range": [
+              909.7918327897787,
+              1466.9806668534875
+            ],
+            "candidate_range": [
+              922.0288749784231,
+              1273.2304176315665
+            ]
+          }
+        }
+      },
+      {
+        "id": "filter-region",
+        "validation": {
+          "status": "passed_tested_rows",
+          "rows": 56,
+          "nonblank_rows": 54
+        },
+        "metrics": {
+          "cu_seconds": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 1.248,
+            "candidate_median": 1.008,
+            "baseline_total": 9.52,
+            "candidate_total": 8.048,
+            "reduction_percent": 19.23076923076923,
+            "baseline_range": [
+              1.008,
+              1.504
+            ],
+            "candidate_range": [
+              0.752,
+              1.248
+            ]
+          },
+          "cpu_ms": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 78.0,
+            "candidate_median": 63.0,
+            "baseline_total": 595.0,
+            "candidate_total": 503.0,
+            "reduction_percent": 19.230769230769234,
+            "baseline_range": [
+              63.0,
+              94.0
+            ],
+            "candidate_range": [
+              47.0,
+              78.0
+            ]
+          },
+          "engine_duration_ms": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 86.0,
+            "candidate_median": 78.0,
+            "baseline_total": 688.0,
+            "candidate_total": 598.0,
+            "reduction_percent": 9.30232558139535,
+            "baseline_range": [
+              78.0,
+              94.0
+            ],
+            "candidate_range": [
+              62.0,
+              94.0
+            ]
+          },
+          "client_elapsed_ms": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 833.3753123879433,
+            "candidate_median": 800.081541761756,
+            "baseline_total": 6804.122873581946,
+            "candidate_total": 6444.327626377344,
+            "reduction_percent": 3.995051224974228,
+            "baseline_range": [
+              754.972499795258,
+              987.9953330382705
+            ],
+            "candidate_range": [
+              749.3425831198692,
+              888.9497090131044
+            ]
+          }
+        }
+      },
+      {
+        "id": "open-matrix",
+        "validation": {
+          "status": "passed_tested_rows",
+          "rows": 84,
+          "nonblank_rows": 81
+        },
+        "metrics": {
+          "cu_seconds": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 1.248,
+            "candidate_median": 1.008,
+            "baseline_total": 10.0,
+            "candidate_total": 8.288,
+            "reduction_percent": 19.23076923076923,
+            "baseline_range": [
+              1.008,
+              1.504
+            ],
+            "candidate_range": [
+              0.752,
+              1.248
+            ]
+          },
+          "cpu_ms": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 78.0,
+            "candidate_median": 63.0,
+            "baseline_total": 625.0,
+            "candidate_total": 518.0,
+            "reduction_percent": 19.230769230769234,
+            "baseline_range": [
+              63.0,
+              94.0
+            ],
+            "candidate_range": [
+              47.0,
+              78.0
+            ]
+          },
+          "engine_duration_ms": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 78.5,
+            "candidate_median": 62.5,
+            "baseline_total": 688.0,
+            "candidate_total": 623.0,
+            "reduction_percent": 20.382165605095544,
+            "baseline_range": [
+              78.0,
+              109.0
+            ],
+            "candidate_range": [
+              62.0,
+              156.0
+            ]
+          },
+          "client_elapsed_ms": {
+            "status": "inconclusive",
+            "complete": true,
+            "paired_repetitions": 8,
+            "baseline_recorded_samples": 8,
+            "candidate_recorded_samples": 8,
+            "baseline_median": 807.377687189728,
+            "candidate_median": 781.046770978719,
+            "baseline_total": 6686.979915946722,
+            "candidate_total": 6507.016457617283,
+            "reduction_percent": 3.261288567765615,
+            "baseline_range": [
+              750.6117494776845,
+              992.6250418648124
+            ],
+            "candidate_range": [
+              700.7864583283663,
+              970.4707078635693
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "limitations": [
+    "Native operation CU-seconds are primary. CPU, engine duration and client elapsed are separate metrics; no conversion between them is performed.",
+    "Costs belong to entire captured queries/interactions, including helper chains; never add these inclusive costs as if each measure consumed them independently.",
+    "Missing events/metrics remain unknown. Partial sums are withheld. Explicit recorded zeros are retained. Failed/throttled operations retain their cost but block reduction claims.",
+    "Descriptive reduction requires every matched sample, tested-row equality, matched query scope, at least 5 pairs, median reduction greater than 10%, and nonoverlapping ranges. This is not a statistical significance test.",
+    "Only tagged query consumption is included. Model loading, refresh, materialization, other visuals, source workloads and monitoring overhead are not a net capacity saving and require separate accounting.",
+    "Unique tag literals may change request/plan cache behavior relative to browser queries; both alternatives use the same tagging shape.",
+    "Warm-up excluded; cache policy and query-scope equivalence are supplied capture metadata. Offline imports are not an attestation of model/data identity or complete browser interactions.",
+    "A whole scenario omitted by a capture cannot be detected. Define representative opening, filtering, expanding and subtotal interactions before running the experiment.",
+    "CU ranges touch: lower recorded medians/totals are descriptive, not an established capacity-saving claim under the current conservative criterion.",
+    "Only synthetic API-replayed matrix queries were measured. No complete browser session, net refresh/source costs or production predictions.",
+    "Raw tenant logs, endpoints, resource identifiers and local paths are excluded from this public summary."
+  ]
+}
