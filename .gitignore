@@ -60,3 +60,7 @@ smoke-created-measure/
 # Generated daily-production comparison
 daily-production-lab/
 smoke-production/
+
+# Generated six-stage production fixture
+production-chain-lab/
+smoke-production-chain/

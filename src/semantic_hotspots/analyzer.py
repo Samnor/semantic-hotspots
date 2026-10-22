@@ -19,7 +19,7 @@ from .profile import RuntimeProfile
 from .rules import inspect_expression, relationship_findings
 from .progress import emit
 
-VERSION = '0.20.0'
+VERSION = '0.21.0'
 SCORE_DESCRIPTION = (
     'Ordinal review priority, not elapsed time, engine work, row scans or CU. '
     'Each nonempty expression starts at 1 point; named rules add their documented points. '

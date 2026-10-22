@@ -180,8 +180,18 @@ def main(argv: list[str] | None = None) -> int:
     production.add_argument('--days',type=_positive,default=112)
     production.add_argument('--sites',type=_positive,default=3)
     production.add_argument('--products',type=_positive,default=4)
+    chain_lab = commands.add_parser('production-chain-lab', help='Export six sequential daily-production measures, one candidate, one matrix and both DAGs')
+    chain_lab.add_argument('-o', '--output', type=Path, default=Path('production-chain-lab'))
+    chain_lab.add_argument('--days', type=_positive, default=112)
+    chain_lab.add_argument('--sites', type=_positive, default=3)
+    chain_lab.add_argument('--products', type=_positive, default=4)
     args = parser.parse_args(argv)
     try:
+        if args.command == 'production-chain-lab':
+            from .production_chain import create_production_chain_lab
+            root = create_production_chain_lab(args.output, days=args.days, sites=args.sites, products=args.products)
+            print(f'Six-stage chain: {root / "report.html"}\nOpen Showcase.pbip and refresh. Native correctness and CU consumption have not been tested by this export.')
+            return 0
         if args.command == 'compute-compare':
             from .compute import compare_compute
             result = compare_compute(args.capture, args.semantic_logs, args.capacity_logs)

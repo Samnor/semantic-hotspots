@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.0
+
+- Add a separate six-stage daily-production fixture whose final measure has exactly five transitive helpers: production, previous-calendar-day difference, period difference, cumulative difference, average daily difference and a fictional 14-day projection.
+- Export one generated replacement root, unchanged helpers, one comparison matrix, paired validation queries and original/proposed DAGs through `production-chain-lab` and Python APIs. Keep this fixture separate from the existing 24-measure lab.
+- Add independent source-row arithmetic and hand-calculated regressions for period boundaries, missing dates, BLANKs, zero production, corrections, cumulative context and nonadditive totals. Native evaluation results are documented separately from generator tests.
+
 ## 0.20.0
 
 - Add a compute-first comparison API and CLI with native interactive CU-seconds as the primary outcome, and CPU, engine duration and client elapsed as independent supporting metrics. Never convert CPU or latency to CU charges.
