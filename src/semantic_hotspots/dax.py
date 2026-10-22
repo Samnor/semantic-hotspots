@@ -280,6 +280,7 @@ class Resolver:
                 # column in an unrelated table from an actual scope collision.
                 # Successful binding discharges those provisional warnings.
                 info.reference_blockers = [r for r in info.reference_blockers if not r.startswith('Virtual name [')]
+                info.diagnostics = [r for r in info.diagnostics if not r.startswith('Virtual name [')]
                 info.diagnostics[-1] = 'VAR bindings and row-column scopes were resolved lexically; references describe static possibilities, not evaluated calls.'
             elif issues:
                 info.reference_blockers[-1] = issues[0]

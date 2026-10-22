@@ -18,7 +18,7 @@ from .parser import load_model, parse_model
 
 _NUMERIC = {'int64', 'double', 'decimal', 'fixeddecimal', 'currency'}
 _PRECEDENCE = {'||': 1, '&&': 2, '=': 3, '==': 3, '<>': 3, '<': 3, '>': 3,
-               '<=': 3, '>=': 3, '+': 4, '-': 4, '*': 5, '/': 5}
+               '<=': 3, '>=': 3, '&': 4, '+': 5, '-': 5, '*': 6, '/': 6}
 _COMPARISONS = {'=', '==', '<>', '<', '>', '<=', '>='}
 RULES = {
     'OPT001': {'title': 'Replace a numeric physical-column SUMX with SUM',
@@ -169,7 +169,9 @@ class _Parser:
     def take(self, value=None):
         token = self.peek()
         if token is None or (value is not None and not self.peek(value)):
-            raise ModelError('Syntax outside the supported logical subset')
+            offset = token.start if token else len(self.text)
+            expected = ' (expected '+value+')' if value else ''
+            raise ModelError('Syntax outside the supported logical subset at offset '+str(offset)+expected)
         self.i += 1
         return token
 
@@ -188,7 +190,7 @@ class _Parser:
             child = self.expression(3)
             node = LogicalNode('NOT', 'unknown', token.start, child.end, [child])
         elif token.kind == 'SYMBOL' and token.value in {'+', '-'}:
-            child = self.expression(6)
+            child = self.expression(7)
             node = LogicalNode('unary', 'unknown', token.start, child.end, [child], value=token.value)
         elif token.kind == 'SYMBOL' and token.value == '(':
             child = self.expression()
@@ -208,6 +210,12 @@ class _Parser:
                     if token.value.upper() == 'DATEDIFF' and len(args) == 2 and self.peek() and self.peek().kind == 'NAME' and self.peek().value.upper() in {'SECOND','MINUTE','HOUR','DAY','WEEK','MONTH','QUARTER','YEAR'}:
                         interval = self.take()
                         args.append(LogicalNode('interval', 'interval', interval.start, interval.end, value=interval.value.upper()))
+                    elif (token.value.upper() == 'CONCATENATEX' and len(args) >= 4 and len(args) % 2 == 0
+                          and self.peek() and self.peek().kind == 'NAME'
+                          and self.peek().value.upper() in {'ASC', 'DESC', 'TRUE', 'FALSE'}
+                          and not (self.i+1 < len(self.tokens) and self.tokens[self.i+1].value == '(')):
+                        order = self.take()
+                        args.append(LogicalNode('sort_order', 'sort_order', order.start, order.end, value=order.value.upper()))
                     else:
                         args.append(self.expression())
             end = self.take(')').end
@@ -260,6 +268,7 @@ class _Parser:
             child_rows, child_filters = rows, filters
             child_schemas = schemas
             if ((node.operation in {'FILTER', 'SUMX', 'COUNTX'} and i == 1)
+                    or (node.operation == 'CONCATENATEX' and (i == 1 or i >= 3 and i % 2 == 1))
                     or (node.operation in {'ADDCOLUMNS', 'SELECTCOLUMNS'} and i >= 2 and i % 2 == 0)):
                 source = node.children[0]
                 child_rows = rows + ((source.table or 'table expression at '+str(source.start)),)
@@ -280,7 +289,7 @@ class _Parser:
         if op == 'unbound_reference':
             self.bind_reference(node, schemas, column_argument)
             return
-        if op in {'column', 'measure', 'literal', 'interval'}:
+        if op in {'column', 'measure', 'literal', 'interval', 'sort_order'}:
             return
         if op == 'variable_reference':
             binding = self.variables[node.target]
@@ -300,8 +309,9 @@ class _Parser:
             node.result_type = c[0].result_type
             node.supported &= node.result_type in _NUMERIC | {'number'}
         elif op == 'binary':
-            node.result_type = 'boolean' if node.value in _COMPARISONS | {'&&', '||'} else 'number'
-            node.supported &= all(x.result_type not in {'table', 'unknown'} for x in c)
+            node.result_type = ('string' if node.value == '&' else
+                                'boolean' if node.value in _COMPARISONS | {'&&', '||'} else 'number')
+            node.supported &= all(x.result_type not in {'table', 'unknown', 'filter_modifier', 'sort_order'} for x in c)
         elif op in {'TRUE', 'FALSE'} and not c:
             node.result_type = 'boolean'
         elif op == 'BLANK' and not c:
@@ -364,6 +374,22 @@ class _Parser:
             node.result_type = c[1].result_type
         elif op == 'COUNTX' and len(c) == 2 and c[0].result_type == 'table' and c[1].result_type in _NUMERIC | {'number', 'scalar', 'blank', 'string', 'datetime'}:
             node.result_type = 'int64'
+        elif op == 'FORMAT' and len(c) in {2, 3} and c[0].result_type not in {'table', 'unknown', 'filter_modifier', 'sort_order'} and all(x.result_type in {'string', 'scalar', 'blank'} for x in c[1:]):
+            # Formatting is retained byte-for-byte; no locale evaluation here.
+            node.result_type = 'string'
+        elif op == 'UNICHAR' and len(c) == 1 and c[0].result_type in _NUMERIC | {'number', 'scalar'}:
+            node.result_type = 'string'
+        elif op == 'CONCATENATEX' and len(c) >= 2 and c[0].result_type == 'table':
+            scalar = lambda x: x.result_type not in {'table', 'unknown', 'filter_modifier', 'sort_order', 'interval'}
+            node.result_type = 'string'
+            node.supported &= scalar(c[1]) and (len(c) < 3 or scalar(c[2]))
+            for i in range(3, len(c), 2):
+                node.supported &= scalar(c[i])
+                if i+1 < len(c):
+                    order = c[i+1]
+                    node.supported &= (order.operation == 'sort_order' or
+                        order.operation == 'literal' and order.result_type == 'number' and order.value in {'0', '1'} or
+                        order.operation in {'TRUE', 'FALSE'} and not order.children)
         elif op == 'FILTER' and len(c) == 2 and c[0].result_type == 'table' and c[1].result_type == 'boolean':
             node.result_type, node.table = 'table', c[0].table
             node.table_columns = dict(c[0].table_columns)
@@ -618,7 +644,7 @@ def _type_gap_only(tree):
                'MIN':{1},'AVERAGE':{1},'COUNT':{1},'COUNTA':{1},'DISTINCTCOUNT':{1},
                'ALL':{1},'VALUES':{1},'SUMX':{2},'FILTER':{2},'ISEMPTY':{1},'COUNTROWS':{1}}
     structural = {'scan','column','measure','literal','variable_reference','variable_definition',
-                  'let','group','unary','binary','extension_column','interval'}
+                  'let','group','unary','binary','extension_column','interval','sort_order'}
     def unknown(node, seen=frozenset()):
         if node.operation == 'column' and node.result_type == 'unknown':return True
         if node.operation == 'variable_reference' and node.target not in seen:

@@ -33,8 +33,27 @@ def _signature(expression):
 def helper_requirements(source,measure,*,table=None):
     model=_model(source);owner=model.measure(measure,table);graph=DependencyGraph(model)
     chain={owner.id,*graph.dependency_ids(owner.id)}
-    return [i for i in dependency_issues(model,graph.syntax,chain,cyclic=owner.id in graph.blocked)
-            if i['code'] in {'missing_definition','unresolved_reference'}]
+    # Only absent catalog objects/definitions can be recovered by importing.
+    # Scope collisions, ambiguous names and unsupported syntax need analysis,
+    # not another copy of the same model.
+    issues=dependency_issues(model,graph.syntax,chain,cyclic=owner.id in graph.blocked)
+    recoverable=[]
+    for issue in issues:
+        if issue['code']=='missing_definition':
+            recoverable.append(issue)
+        elif issue['code']=='unresolved_reference':
+            info=graph.syntax[issue['owner_id']]
+            virtual={v.casefold() for v in info.virtual_columns}
+            for ref in info.unresolved:
+                if ref.get('offset')!=issue.get('offset'):continue
+                known=any(e.kind in {'column','measure'} and e.name.casefold()==ref['name'].casefold()
+                          and (not ref.get('table') or e.table.casefold()==ref['table'].casefold())
+                          for e in model.entities.values())
+                if (ref.get('reason')=='unknown reference or virtual column' and not known
+                        and not ref['name'].startswith('@') and ref['name'].casefold() not in virtual):
+                    recoverable.append(issue)
+                break
+    return recoverable
 
 
 @dataclass

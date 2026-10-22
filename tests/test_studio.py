@@ -302,5 +302,20 @@ class StudioTests(unittest.TestCase):
                 studio.dispatch('create-measure',{'measure':owner,'landing_matrices':ids})
         self.assertIsNone(studio.snapshot()['measure_review'])
 
+    def test_scope_blockers_do_not_open_missing_definition_recovery(self):
+        from semantic_hotspots import parse_model
+        from test_optimizer import source
+        studio=self.server.studio
+        studio.model=parse_model(source('VAR t=ADDCOLUMNS(Sales,"Dependent",1) RETURN CONCATENATEX(t,[Dependent],",")'))
+        studio.specs=[];studio.analyze_current()
+        studio.dispatch('create-measure',{'measure':studio.model.measure('Total').id})
+        review=studio.snapshot()['measure_review']
+        self.assertFalse(review['helper_requirements'])
+        self.assertTrue(review['analysis_blockers'])
+        self.assertEqual(review['created']['outcome'],'unchanged_copy')
+        html=(Path(__file__).parents[1]/'src/semantic_hotspots/assets/studio.html').read_text()
+        self.assertIn('Analysis coverage needs attention',html)
+        self.assertIn('Reimporting unchanged definitions does not fix unsupported syntax',html)
+
 
 if __name__=='__main__':unittest.main()
