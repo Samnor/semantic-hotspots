@@ -37,3 +37,6 @@ from .helpers import HelperRecovery, helper_requirements, recover_helpers, recov
 
 from .production_lab import create_production_lab, production_model, production_data
 __all__ += ['create_production_lab','production_model','production_data']
+
+from .compute import ComputeComparison, compare_compute, normalize_capacity_events
+__all__ += ['ComputeComparison', 'compare_compute', 'normalize_capacity_events']

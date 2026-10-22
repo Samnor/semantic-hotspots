@@ -124,6 +124,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument('--timeout', type=_positive, default=300)
     run.add_argument('--collect-only', action='store_true')
     run.add_argument('--trace-verified', action='store_true')
+    compute = commands.add_parser('compute-compare', help='Compare native interactive CU, CPU and latency for captured paired interactions')
+    compute.add_argument('capture', type=Path)
+    compute.add_argument('--semantic-logs', type=Path, required=True)
+    compute.add_argument('--capacity-logs', type=Path, help='Native CloudEvents or normalized operation rows with explicit capacity and throttle fields')
+    compute.add_argument('-o', '--output', type=Path, default=Path('compute-comparison'))
     sessions = commands.add_parser('engine-sessions', help='Find local Desktop endpoints and list their databases through ADOMD (Windows)')
     sessions.add_argument('--server', help='Probe an explicit local endpoint instead of workspace files')
     sessions.add_argument('--adomd-path', type=Path)
@@ -177,6 +182,13 @@ def main(argv: list[str] | None = None) -> int:
     production.add_argument('--products',type=_positive,default=4)
     args = parser.parse_args(argv)
     try:
+        if args.command == 'compute-compare':
+            from .compute import compare_compute
+            result = compare_compute(args.capture, args.semantic_logs, args.capacity_logs)
+            files = result.write(args.output)
+            print(f'Interactive compute report: {files["html"].resolve()}')
+            print('Primary outcome: recorded interactive CU-seconds. CPU and latency are separate; missing cost stays unknown.')
+            return 0
         if args.command == 'production-lab':
             from .production_lab import create_production_lab
             output=create_production_lab(args.output,days=args.days,sites=args.sites,products=args.products)
