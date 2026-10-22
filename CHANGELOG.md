@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.0
+
+- Bind text-detail chains through `CONCATENATEX`, text concatenation (`&`), `FORMAT` and `UNICHAR`, including iterator expression and sort-key row scopes, explicit sort directions and multiple sort keys. Retain original formatting, ordering, delimiters and evaluation contexts.
+- Resolve virtual-column/model-column name overlaps using the active table schema even inside text expressions. Genuine model-measure ambiguities and out-of-scope aliases remain blocked.
+- Separate missing-definition recovery from syntax, reference-scope and dependency-order diagnostics in Studio. Do not suggest reimporting the same model as a remedy for an ambiguous virtual name.
+- Validate an independent fictional text-detail helper chain in the native engine across 54 filter contexts, including negative values, BLANK, zero, empty input and ordered text. This establishes finite correctness checks only; no CU or timing reduction is claimed.
+
 ## 0.21.0
 
 - Add a separate six-stage daily-production fixture whose final measure has exactly five transitive helpers: production, previous-calendar-day difference, period difference, cumulative difference, average daily difference and a fictional 14-day projection.

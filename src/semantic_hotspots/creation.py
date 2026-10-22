@@ -123,7 +123,7 @@ def _create_from_review(model, review, *, progress=None):
     if not complete:
         for issue in blockers:
             if issue['message'] not in diagnostics:diagnostics.append(issue['message'])
-        diagnostics.append('Validation queries need the actual helper definitions, complete reference binding, and controllable date evaluation. See the specific requirements above.')
+        diagnostics.append('Validation queries are withheld until the reported definition, reference-binding, dependency-order or date-evaluation requirements are resolved. See the specific blockers above.')
     explanation = ('Created a new measure with '+str(len(chosen['steps']))+(' guarded simplification' if len(chosen['steps'])==1 else ' guarded simplifications')+'. Validate its results and performance before use.' if chosen else 'Created an unchanged copy. No supported guarded rewrite matched; no performance improvement is claimed.')
     if chosen and chosen.get('chain_specialization'):
         local_count=sum(step['rule']!='OPT005' for step in chosen['steps'])

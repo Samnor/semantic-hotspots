@@ -308,6 +308,8 @@ class Studio:
             review.write(root/'measure')
             value={k:copy.deepcopy(review.data[k]) for k in ['measure_id','measure','expression','diagnostics','affected_downstream_measures']}
             value['helper_requirements']=helper_requirements(self.model,selected)
+            value['analysis_blockers']=[i for i in review.data['original_dag']['dependency_issues']
+                                        if i not in value['helper_requirements']]
             value['date_controls']=copy.deepcopy(review.data.get('date_controls'))
             value['validation_dates']=copy.deepcopy(review.data['validation_dates'])
             value['recovery']=data.get('_recovery')

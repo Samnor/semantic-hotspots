@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-22",
+  "fixture": "independent fictional Sales text-detail helper chain",
+  "engine": "Microsoft Fabric semantic model (Import)",
+  "candidate_changed": true,
+  "original_helpers_unchanged": true,
+  "filter_contexts_checked": 54,
+  "strict_original_candidate_text_and_blank_checks": 54,
+  "independent_source_oracle_assertions": 378,
+  "downloaded_preview_query_executed": true,
+  "all_checks_passed": true,
+  "model_deleted_and_absence_verified": true,
+  "cu_measured": false,
+  "performance_claim": "none",
+  "scope": "finite fictional cases; no full DAX-engine emulation or universal equivalence proof"
+}
