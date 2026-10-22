@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.0
+
+- Add a compute-first comparison API and CLI with native interactive CU-seconds as the primary outcome, and CPU, engine duration and client elapsed as independent supporting metrics. Never convert CPU or latency to CU charges.
+- Join captured interactions to exact query tokens and native operation identities, using in-query tags that survive Workspace Monitoring comment removal. Accept raw capacity CloudEvents or explicit normalized operation records.
+- Deduplicate exported operation charges, reject conflicting evidence, retain failed/throttled costs, exclude declared warm-ups, and withhold savings when expected pairs, correctness, binding or telemetry are incomplete. Recorded zeros remain distinct from missing observations.
+- Rank expandable HTML evidence by original CU consumption and compare whole predeclared replays, including all listed queries per interaction. Keep background materialization, external sources, monitoring and production extrapolations outside query-level savings claims.
+
 ## 0.19.0
 
 - Add narrowly guarded constant-one counting iterators and row-invariant direct-count proposals. Preserve empty-input BLANK behavior, qualify moved column bindings, and retain context-transition and outer-row-context guards.

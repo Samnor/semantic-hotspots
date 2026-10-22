@@ -695,3 +695,52 @@ Scoped-variable syntax follows Microsoft’s [VAR reference](https://learn.micro
 A pinned ten-report Microsoft sample corpus contains 250 explicit measures. Every measure was attempted against the original embedded data in four representative contexts on Windows. 245 measures ran in all contexts; five published measures reference missing columns. Two experimental rewrite rounds found floating-point counterexamples to both division replacement and denominator caching. Both rules now retain floating-point formulas. Three aggregate/helper proposals remain eligible; **no clear speedup was established**. Constant DAX string format expressions are preserved as static formats; contextual formatting retains its guards.
 
 See [the public corpus methodology and aggregate results](benchmarks/public-samples-20261021/README.md). PBIX files, embedded data, raw cell outputs and private regressions are not distributed. These are finite warm client timings, not exhaustive equivalence proofs, isolated measure CPU or production predictions.
+
+### Compare interactive capacity consumption
+
+The [native Fabric synthetic evaluation](benchmarks/fabric-cu-20261022/README.md) recorded **30.8% lower median interactive CU-seconds per complete replay**, with exact value/BLANK checks and full operation coverage. This is evidence for that fictional workload, not a production savings prediction.
+
+For capacity optimization, use recorded **interactive CU-seconds per completed interaction** as the primary outcome. Query CPU is supporting evidence; client elapsed time is a separate observation. A faster query need not consume fewer CUs, and unchanged latency does not rule out lower CPU. Neither CPU nor elapsed time is converted into an estimated CU charge.
+
+```python
+from semantic_hotspots import compare_compute
+
+result = compare_compute(
+    "compute-capture.json",
+    "semantic-events.json",
+    "capacity-operation-events.json",
+)
+result.write("compute-comparison")  # compute.html + compute-results.json
+```
+
+```powershell
+py -m semantic_hotspots compute-compare compute-capture.json --semantic-logs semantic-events.json --capacity-logs capacity-operation-events.json -o compute-comparison
+```
+
+The report ranks interactions by recorded original CU consumption, with expandable CPU, duration, correctness, coverage and operation evidence. Missing observations stay unknown; explicit recorded zeros remain zero. The existing `experiment-run` duration report still answers a latency question; its speedup labels are **not** capacity-saving labels.
+
+A capture is a JSON object with `kind: "compute-comparison-capture"`, `schema_version: "1.0"`, `completed: true`, `repetitions` (expected measured pairs, excluding warm-up), and:
+
+- `environment`: `capacity_id`, `dataset_id`, `model_sha256`, `cache_policy`; include data/refresh fingerprints, capacity SKU, concurrency, source mode and other relevant controls. Both variants must use equivalent data, security and query conditions.
+- `scenarios`: unique `id`, `label`, `queries: {"baseline": "DAX", "candidate": "DAX"}`, `matched_query_scope: true`, and `validation.rows`. Each validation row must contain engine-produced `Equal` (strict DAX `==` plus equal blankness), `OriginalBlank`, and `CandidateBlank` fields; bracketed API result column names also work. These are observed checks, not a universal equivalence proof. Keep validation queries/results with the capture. Entirely BLANK checks cannot establish a useful reduction.
+- `samples`: unique `id`, `scenario_id`, `variant` (`baseline` or `candidate`), `repeat` (1 through `repetitions`; 0 for an excluded warm-up), `warmup` (boolean), `status: "success"`, optional `client_elapsed_ms`, and a `queries` list. Multiple queries in one interaction are summed once. Every expected pair is required; deleting both variants of a measured repetition cannot create a passing result.
+
+Build each captured query with the same tag-variable shape on both sides:
+
+```python
+from semantic_hotspots.compute import tag_compute_query, query_hash
+
+text = tag_compute_query(template, "matrix-open-baseline-1")
+query_record = {"text": text, "sha256": query_hash(text),
+                "tag": "matrix-open-baseline-1"}
+# Execute `text` against the selected model, retain results and status, and
+# include query_record in this interaction's sample. No execution is implied here.
+```
+
+Tagging uses an unused query-scoped variable because Workspace Monitoring removes comments. Matching preserves every DAX token, including tag literals, while allowing monitoring's whitespace normalization. It requires a unique matching `QueryBegin`, its `QueryEnd` and operation ID; there is no timestamp-only or model-name-only attribution. Query-scoped measure definitions are accepted here because the capture provides the exact alternatives; generic model profiling deliberately skips such definitions.
+
+Semantic input uses the documented normalized `ItemId`, `OperationId`, `OperationName`, `EventText` fields, including `ExecutionMetrics.totalCpuTimeMs` and `durationMs`. Capacity input accepts native `Microsoft.Fabric.CapacityOperationEvents.Operation` CloudEvents (including KQL `Data` wrappers), or normalized rows with `EventId`, `CapacityId`, `ItemId`, `OperationId`, `OperationName: "Query"`, `CUSeconds`, `Utilization: "Interactive"`, `Status` and `ThrottlingMs`. Native `capacityUnitMs` is divided by 1000 exactly once. Overview/summary/timepoint percentages are not operation charges. Reexports are deduplicated by operation; conflicting charges are rejected.
+
+For a matrix, predeclare representative opening, filtering, expansion and subtotal interactions. Alternate original/candidate order, prime both, then collect at least five matched pairs. Wait for telemetry ingestion and check coverage. The descriptive reduction label requires complete evidence, correctness and matched query-scope checks, more than 10% lower median, and nonoverlapping sample ranges; it is not a significance test. Offline captures are user-supplied evidence, not attested runs. The library does not sign in, deploy, replay a browser or retrieve monitoring data automatically.
+
+Compare **total native CU across equivalent completed interactions**, including query frequency, when assessing the report as a whole. This capture only accounts for its listed queries. Measure refresh/materialization, external source consumption, model loading and monitoring separately; preaggregation may move work from interactive queries to background processing. A query-level reduction is not automatically a net capacity saving.
