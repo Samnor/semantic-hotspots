@@ -744,3 +744,28 @@ Semantic input uses the documented normalized `ItemId`, `OperationId`, `Operatio
 For a matrix, predeclare representative opening, filtering, expansion and subtotal interactions. Alternate original/candidate order, prime both, then collect at least five matched pairs. Wait for telemetry ingestion and check coverage. The descriptive reduction label requires complete evidence, correctness and matched query-scope checks, more than 10% lower median, and nonoverlapping sample ranges; it is not a significance test. Offline captures are user-supplied evidence, not attested runs. The library does not sign in, deploy, replay a browser or retrieve monitoring data automatically.
 
 Compare **total native CU across equivalent completed interactions**, including query frequency, when assessing the report as a whole. This capture only accounts for its listed queries. Measure refresh/materialization, external source consumption, model loading and monitoring separately; preaggregation may move work from interactive queries to background processing. A query-level reduction is not automatically a net capacity saving.
+
+### A final measure built on five sequential helpers
+
+[Native validation of all six stages](benchmarks/five-helper-chain-20261022/README.md) passed on both hand-calculated and larger fixtures. Its CU comparison remains inconclusive despite a lower median.
+
+Create a smaller daily-production fixture with **exactly six original measures**:
+
+```powershell
+python -m semantic_hotspots production-chain-lab --days 364 --sites 6 --products 8 -o production-chain-lab
+```
+
+The chain is:
+
+1. **Daily production** — sum produced units at the current daily/site/product context.
+2. **Daily production difference** — current production minus the previous **calendar** day's production. Return BLANK unless exactly one day is selected and both observations exist. Retain site/product filters; remove date/period filters only for the previous-day lookup.
+3. **Period production difference** — sum the daily differences in the current context.
+4. **Cumulative production difference** — evaluate that period difference across all periods through the current period. Preserve explicit Calendar filters and site/product selections.
+5. **Average daily production difference** — divide cumulative difference by the number of calendar days in the cumulative context, including days with missing observations.
+6. **Projected next-period production difference** — multiply that average by fourteen. This is a fictional test rule, not a forecast model.
+
+The last measure depends on the five preceding helpers. The library creates a seventh, separately named root by applying guarded changes through those actual definitions. The original helpers remain unchanged. The comparison retains the previous-day lookup, calendar iterator and cumulative context; it does not replace nonadditive totals with sums of displayed leaf forecasts.
+
+Open `report.html` for the chain, DAX and original/proposed DAGs. Open `Showcase.pbip` and refresh in Desktop for **one comparison matrix**. The model contains embedded fictional data; no source credentials or real reports are needed. `validate-chain.dax` is a runnable query defining all six originals and the generated root; it saves no measures. `measure-definitions.json` lists the six definitions separately. `new-measure/validate-total.dax` and grouped queries let you check both paths. The export itself does not execute DAX or establish correctness or CU savings.
+
+Python callers can use `production_chain_model()` for the six original definitions and `create_production_chain_lab(...)` for the complete export. The independent test oracle computes results from source rows and stated rules without reading the DAX. Native evaluation must still check the original, generated root and source-row expectations on real engine results.

@@ -40,3 +40,6 @@ __all__ += ['create_production_lab','production_model','production_data']
 
 from .compute import ComputeComparison, compare_compute, normalize_capacity_events
 __all__ += ['ComputeComparison', 'compare_compute', 'normalize_capacity_events']
+
+from .production_chain import production_chain_model, create_production_chain_lab
+__all__ += ['production_chain_model', 'create_production_chain_lab']
