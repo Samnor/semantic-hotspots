@@ -698,6 +698,8 @@ See [the public corpus methodology and aggregate results](benchmarks/public-samp
 
 ### Compare interactive capacity consumption
 
+The [native Fabric synthetic evaluation](benchmarks/fabric-cu-20261022/README.md) recorded **30.8% lower median interactive CU-seconds per complete replay**, with exact value/BLANK checks and full operation coverage. This is evidence for that fictional workload, not a production savings prediction.
+
 For capacity optimization, use recorded **interactive CU-seconds per completed interaction** as the primary outcome. Query CPU is supporting evidence; client elapsed time is a separate observation. A faster query need not consume fewer CUs, and unchanged latency does not rule out lower CPU. Neither CPU nor elapsed time is converted into an estimated CU charge.
 
 ```python
